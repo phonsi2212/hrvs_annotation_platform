@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HRVS Studio - High-Resolution Visual Search Annotation Platform</title>
+  <meta name="description" content="Ultra-high-resolution image annotation platform optimized for dense crowd and cluttered visual search benchmarks.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/styles.css?v=__APP_VERSION__">
+</head>
+<body>
+
+  <!-- Top Navigation Header -->
+  <header class="app-header">
+    <div class="brand-section">
+      <div class="brand-logo">
+        <span>🎯 HRVS Studio</span>
+        <span class="brand-badge">Ultra-HD Visual Search</span>
+      </div>
+    </div>
+
+    <!-- Decoupled Two-Workflow Switcher -->
+    <nav class="workflow-nav" aria-label="Workflow Switcher">
+      <button id="tabPointMode" class="mode-tab-btn active" title="Workflow 1: Point Annotation (Shortcut: 1 or Alt+1)">
+        <span>🎯 Mode 1: Point Annotation</span>
+      </button>
+      <button id="tabQAMode" class="mode-tab-btn qa-mode" title="Workflow 2: QA Annotation (Shortcut: 2 or Alt+2)">
+        <span>💬 Mode 2: QA Annotation</span>
+      </button>
+    </nav>
+
+    <!-- Header Actions & Image Stepper -->
+    <div class="header-actions">
+      <!-- Quick Image Stepper (A / D) -->
+      <div class="nav-image-stepper" title="Switch images (Keys: A / D or Left / Right arrows)">
+        <button id="prevImageBtn" class="stepper-btn">&lt; A</button>
+        <span id="stepperText" class="stepper-info">0 / 0</span>
+        <button id="nextImageBtn" class="stepper-btn">D &gt;</button>
+      </div>
+
+      <button id="openImportBtn" class="btn" title="Import Images or Local Folder">
+        <span>📁 Import</span>
+      </button>
+      <button id="triggerBackupBtn" class="btn" title="Create Snapshot Backup to storage/auto_backups">
+        <span>💾 Backup</span>
+      </button>
+      <button id="openExportBtn" class="btn btn-primary" title="Export HRVS JSON / CSV">
+        <span>📤 Export</span>
+      </button>
+      <button id="openShortcutsBtn" class="btn btn-icon" title="Keyboard Shortcuts (?)">
+        <span>⌨️</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <div class="app-container">
+
+    <!-- Left Sidebar: Dataset & Image Explorer -->
+    <aside class="sidebar-left">
+      <div class="sidebar-header">
+        <div class="sidebar-title-row">
+          <button id="backToDatasetsBtn" class="back-btn" title="Back to all datasets" style="display: none;">←</button>
+          <span class="sidebar-title" id="sidebarTitle">Datasets</span>
+          <span class="progress-pill" id="qaProgressPill" title="Images with completed QA">💬 0/0</span>
+          <span id="progressPill" class="progress-pill">0/0 (0%)</span>
+        </div>
+
+        <div class="search-filter-box" id="searchFilterBox" style="display: none;">
+          <input type="text" id="imageSearchInput" class="search-input" placeholder="Search images (name, ID)...">
+          <div class="filter-row">
+            <select id="statusFilterSelect" class="filter-select" title="Filter by Status">
+              <option value="all">Status: All</option>
+              <option value="todo">Todo</option>
+              <option value="in_progress">In Progress</option>
+              <option value="completed">Completed</option>
+            </select>
+            <select id="densityFilterSelect" class="filter-select" title="Filter by Density Group">
+              <option value="all">Group: All</option>
+              <option value="same_object">Same-Object (Crowd)</option>
+              <option value="mixed_object">Mixed-Object (Clutter)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dataset folder list (top level) -->
+      <div id="datasetListContainer" class="image-list-container">
+        <!-- Rendered dynamically by app.js -->
+      </div>
+
+      <!-- Scrollable Image Cards List (inside a dataset) -->
+      <div id="imageListContainer" class="image-list-container" style="display: none;">
+        <!-- Rendered dynamically by app.js -->
+      </div>
+    </aside>
+
+    <!-- Center Canvas Viewport -->
+    <main class="viewport-center" id="viewportCenter">
+      
+      <!-- Floating Top Canvas Toolbar (drag the handle to reposition) -->
+      <div class="canvas-toolbar">
+        <div class="toolbar-drag-handle" id="toolbarDragHandle" title="Drag to move the toolbar anywhere · Double-click to reset position">⠿</div>
+        <!-- Workflow 1 Point Tools -->
+        <div class="toolbar-group">
+          <button id="toolAddPoint" class="tool-btn active" title="Add Point (Key: P)">
+            <span>➕ Add</span>
+          </button>
+          <button id="toolSelectPoint" class="tool-btn" title="Select / Move Point (Key: V)">
+            <span>👆 Select</span>
+          </button>
+          <button id="toolUndo" class="tool-btn" title="Undo Last Action (Ctrl + Z)">
+            <span>↩️</span>
+          </button>
+          <button id="toolRedo" class="tool-btn" title="Redo (Ctrl + Y)">
+            <span>↪️</span>
+          </button>
+          <button id="toolClearPoints" class="tool-btn btn-danger" title="Clear all points on current image">
+            <span>🗑️</span>
+          </button>
+        </div>
+
+        <div class="toolbar-divider"></div>
+
+        <!-- Viewport & Zoom Tools -->
+        <div class="toolbar-group">
+          <button id="toolFitScreen" class="tool-btn" title="Fit to Screen (Keys: F or R)">
+            <span>⛶ Fit</span>
+          </button>
+          <button id="toolZoomOut" class="tool-btn" title="Zoom Out (-)">
+            <span>➖</span>
+          </button>
+          <span id="zoomLevelBadge" class="zoom-badge">100%</span>
+          <button id="toolZoomIn" class="tool-btn" title="Zoom In (+)">
+            <span>➕</span>
+          </button>
+          <button id="toolActualSize" class="tool-btn" title="Zoom to Actual Pixels 1:1 (Key: Z)">
+            <span>🔍 1:1</span>
+          </button>
+          <button id="toolToggleHide" class="tool-btn" title="Hold 'H' or Toggle to inspect image without points">
+            <span>👁️ Points</span>
+          </button>
+          <button id="toolToggleCrosshair" class="tool-btn active" title="Toggle Crosshairs">
+            <span>⌖ Crosshair</span>
+          </button>
+          <select id="markerSizeSelect" class="filter-select" style="width: auto; padding: 4px;" title="Marker Size">
+            <option value="4">4px</option>
+            <option value="6" selected>6px</option>
+            <option value="8">8px</option>
+            <option value="10">10px</option>
+          </select>
+        </div>
+
+        <div class="toolbar-divider"></div>
+
+        <!-- Image Adjustments & Status -->
+        <div class="toolbar-group">
+          <details style="position: relative;">
+            <summary class="tool-btn" style="list-style: none;" title="Brightness / Contrast Adjustments">☀️ Adjust</summary>
+            <div style="position: absolute; top: 32px; left: 0; background: var(--bg-glass); backdrop-filter: blur(8px); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; width: 220px; box-shadow: var(--shadow-lg); z-index: 50; display:flex; flex-direction:column; gap:8px;">
+              <div style="display:flex; justify-content:space-between; font-size:0.75rem;">
+                <span>Brightness</span>
+                <span id="brightnessVal" style="font-family:var(--font-mono);">100%</span>
+              </div>
+              <input type="range" id="brightnessSlider" min="50" max="200" value="100" style="width:100%;">
+              <div style="display:flex; justify-content:space-between; font-size:0.75rem;">
+                <span>Contrast</span>
+                <span id="contrastVal" style="font-family:var(--font-mono);">100%</span>
+              </div>
+              <input type="range" id="contrastSlider" min="50" max="200" value="100" style="width:100%;">
+              <button id="resetFiltersBtn" class="btn" style="padding:4px 8px; font-size:0.7rem; margin-top:4px;">Reset Sliders</button>
+            </div>
+          </details>
+
+          <select id="imageStatusSelect" class="filter-select" style="font-weight:600;" title="Change Image Status">
+            <option value="todo">Status: Todo</option>
+            <option value="in_progress">Status: In Progress</option>
+            <option value="completed">Status: Completed</option>
+          </select>
+          <span id="pointLockBadge" class="lock-badge" style="display: none;" title="Completed image: points are read-only. Change the status to unlock editing.">🔒 Locked</span>
+          <button id="finishImageBtn" class="tool-btn finish-btn" title="Mark this image as Completed and save its annotation JSON file">
+            <span>✅ Finish</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Main Annotation Canvas (base = image, overlay = markers/crosshair) -->
+      <canvas id="annotationCanvas"></canvas>
+      <canvas id="overlayCanvas"></canvas>
+
+      <!-- Bottom Floating HUD -->
+      <div class="viewport-hud" id="viewportHud">
+        <div class="hud-item">
+          <span class="hud-label">Image (X, Y):</span>
+          <span id="hudCoords" class="hud-val">(0.0, 0.0)</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">Norm:</span>
+          <span id="hudNorm" class="hud-val">[0.0, 0.0]</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">Zoom:</span>
+          <span id="hudZoom" class="hud-val">1.00x</span>
+        </div>
+        <div class="hud-item">
+          <span class="hud-label">Resolution:</span>
+          <span id="hudRes" class="hud-val">-- × -- px</span>
+        </div>
+      </div>
+
+      <!-- Interactive Minimap Card -->
+      <div class="viewport-minimap-card">
+        <div class="minimap-title-bar">
+          <span>Minimap Navigator</span>
+        </div>
+        <canvas id="minimapCanvas" width="180" height="120"></canvas>
+      </div>
+
+    </main>
+
+    <!-- Right Sidebar: Inspector & Workflows -->
+    <aside class="sidebar-right">
+
+      <!-- ================= Workflow 1 Panel: Point Annotation ================= -->
+      <div id="panelPointWorkflow" style="display: flex; flex-direction: column; height: 100%;">
+        <div class="panel-header">
+          <span class="panel-title">Point Annotation</span>
+          <span id="pointsCountBadge" class="progress-pill">0 pts</span>
+        </div>
+
+        <div class="panel-body">
+          <!-- Category Manager Box -->
+          <div class="section-box">
+            <div class="section-title">
+              <span>Category Palette (Keys 1-9)</span>
+              <button id="addNewCategoryBtn" class="btn" style="padding: 2px 6px; font-size: 0.68rem;">+ Custom Class</button>
+            </div>
+            
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:0.7rem; color:var(--text-muted);">Target Density:</span>
+              <select id="imageDensitySelect" class="filter-select" style="flex:1;">
+                <option value="same_object">Same-Object (NWPU-Crowd)</option>
+                <option value="mixed_object">Mixed-Object (Cluttered Room)</option>
+              </select>
+            </div>
+
+            <!-- Category buttons with color dots and shortcut numbers -->
+            <div id="categoryGrid" class="category-grid">
+              <!-- Rendered dynamically -->
+            </div>
+          </div>
+
+          <!-- Selected Point Inspector Box -->
+          <div id="pointInspectorCard" class="section-box" style="display: none;">
+            <div class="section-title">
+              <span>Selected Point: <strong id="inspectorPointId" style="color:var(--accent-cyan); font-family:var(--font-mono);">--</strong></span>
+              <button id="deletePointBtn" class="btn btn-danger" style="padding: 2px 8px; font-size: 0.68rem;" title="Delete selected point (Key: Delete)">Delete</button>
+            </div>
+
+            <div class="point-detail-card">
+              <div class="field-row">
+                <span class="field-label">Original (X, Y):</span>
+                <div style="display:flex; gap:4px;">
+                  <input type="number" id="inspectorPointX" class="field-val-input" style="width:65px;" step="0.5">
+                  <input type="number" id="inspectorPointY" class="field-val-input" style="width:65px;" step="0.5">
+                </div>
+              </div>
+
+              <div class="field-row">
+                <span class="field-label">Normalized [0, 1]:</span>
+                <span id="inspectorPointNorm" style="font-size:0.75rem; font-family:var(--font-mono); color:var(--text-secondary);">[0, 0]</span>
+              </div>
+
+              <div class="field-row">
+                <span class="field-label">Category & Color:</span>
+                <div style="display:flex; gap:6px; align-items:center;">
+                  <select id="inspectorPointCat" class="filter-select" style="width:120px;"></select>
+                  <input type="color" id="inspectorPointColor" style="width:28px; height:24px; padding:0; border:none; background:transparent; cursor:pointer;">
+                </div>
+              </div>
+
+              <div class="field-row">
+                <span class="field-label">Color / Type:</span>
+                <input type="text" id="inspectorAttrColor" class="field-val-input" placeholder="e.g. red_hat, silver">
+              </div>
+
+              <div class="field-row">
+                <span class="field-label">State / Pose:</span>
+                <input type="text" id="inspectorAttrState" class="field-val-input" placeholder="e.g. standing, open">
+              </div>
+
+              <div class="form-group" style="margin-top:4px;">
+                <label class="form-label">Note / Annotation Details:</label>
+                <textarea id="inspectorPointNote" class="form-control" rows="2" placeholder="Optional notes about this point..."></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Points Breakdown & List Table -->
+          <div class="section-box" style="flex: 1; display: flex; flex-direction: column;">
+            <div class="section-title">
+              <span>Points on Image</span>
+            </div>
+
+            <div id="pointsCategoryBreakdown" style="display: flex; flex-wrap: wrap; gap: 4px;">
+              <!-- Category pills -->
+            </div>
+
+            <div style="flex: 1; overflow-y: auto; margin-top: 8px; max-height: 220px; border: 1px solid var(--border-color); border-radius: 6px;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 0.75rem;">
+                <thead style="background: var(--bg-secondary); position: sticky; top: 0;">
+                  <tr>
+                    <th style="padding: 6px; text-align: left; color: var(--text-muted);">ID</th>
+                    <th style="padding: 6px; text-align: left; color: var(--text-muted);">Class</th>
+                    <th style="padding: 6px; text-align: left; color: var(--text-muted);">Coords</th>
+                  </tr>
+                </thead>
+                <tbody id="pointsListTableBody">
+                  <!-- Rendered dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= Workflow 2 Panel: QA Annotation ================= -->
+      <div id="panelQAWorkflow" style="display: none; flex-direction: column; height: 100%;">
+        <div class="panel-header">
+          <span class="panel-title">Question–Answer (QA) Mode</span>
+          <span id="qaCountBadge" class="progress-pill">0 Q&A</span>
+        </div>
+
+        <div class="panel-body">
+          <div class="qa-banner">
+            <span>🔒 Read-only Canvas: Point coordinates are locked. Click points to link Ground-Truth targets for QA.</span>
+          </div>
+
+          <!-- QA status control: Finish locks Q&A editing, Unlock reverts -->
+          <div class="qa-status-row">
+            <select id="qaStatusSelect" class="filter-select" style="font-weight:600;" title="QA Status (question & answer progress)">
+              <option value="todo">QA: Todo</option>
+              <option value="in_progress">QA: In Progress</option>
+              <option value="completed">QA: Completed</option>
+            </select>
+            <button id="finishQABtn" class="tool-btn finish-btn" title="Mark this image's QA as Completed and lock Q&A editing">
+              <span>✅ Finish QA</span>
+            </button>
+          </div>
+          <div id="qaLockBanner" class="qa-banner qa-banner-locked" style="display: none;">
+            <span>🔒 QA completed — Q&amp;A pairs are locked. Press <strong>🔓 Unlock QA</strong> (or change the QA status) to edit.</span>
+          </div>
+
+          <div style="display: flex; justify-content: flex-end;">
+            <button id="newQABtn" class="btn btn-success" style="width: 100%;">+ New QA Pair</button>
+          </div>
+
+          <!-- QA Editor Form / Card -->
+          <div id="qaEditorCard" class="section-box" style="display: none; border-color: #10b981;">
+            <div class="section-title" style="color: #6ee7b7;">
+              <span id="qaEditorTitle">Compose QA Pair</span>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Task Type:</label>
+              <select id="qaTaskTypeSelect" class="form-control">
+                <option value="Visual Search">Visual Search</option>
+                <option value="Counting">Counting</option>
+                <option value="Attribute Recognition">Attribute Recognition</option>
+                <option value="Spatial Relation">Spatial Relation</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Quick Prompt Template:</label>
+              <select id="quickPromptSelect" class="form-control" style="font-size:0.75rem; color:var(--text-secondary);">
+                <option value="">-- Choose template (optional) --</option>
+                <option value="Where is the person wearing a red hat?">Where is the person wearing a red hat?</option>
+                <option value="How many people are located in the center dense zone?">How many people are located in the center dense zone?</option>
+                <option value="What color is the mug next to the laptop?">What color is the mug next to the laptop?</option>
+                <option value="Which object is placed directly on top of the desk?">Which object is placed directly on top of the desk?</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Question:</label>
+              <textarea id="qaQuestionInput" class="form-control" rows="2" placeholder="e.g. Where is the person wearing a yellow cap?"></textarea>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Answer:</label>
+              <textarea id="qaAnswerInput" class="form-control" rows="2" placeholder="e.g. Near the middle cluster at coordinates (963, 1128)."></textarea>
+            </div>
+
+            <!-- Target Points Selection -->
+            <div class="form-group" style="margin-top: 4px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
+                <label class="form-label">Ground-Truth Target Points:</label>
+                <button id="toggleSelectTargetsBtn" class="btn btn-success" style="padding: 2px 8px; font-size: 0.7rem;">
+                  🎯 Enable Point Picker
+                </button>
+              </div>
+
+              <div id="qaTargetChipsContainer" class="qa-targets-row" style="min-height: 28px; padding: 4px; background: var(--bg-secondary); border-radius: 4px;">
+                <!-- Target chips with remove cross -->
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px;">
+              <button id="cancelQABtn" class="btn">Cancel</button>
+              <button id="saveQABtn" class="btn btn-success">Save QA Pair</button>
+            </div>
+          </div>
+
+          <!-- Existing QA Pairs List for Current Image -->
+          <div class="section-box" style="flex: 1; display: flex; flex-direction: column;">
+            <div class="section-title">
+              <span>QA Annotations for Active Image</span>
+            </div>
+            <div id="qaListContainer" style="display: flex; flex-direction: column; gap: 8px; overflow-y: auto; max-height: 400px;">
+              <!-- Rendered dynamically -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </aside>
+  </div>
+
+  <!-- ================= Modals ================= -->
+
+  <!-- Import Modal -->
+  <div id="importModal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="modal-title">Import Images / Dataset</span>
+        <button id="closeImportBtn" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Density Group Classification:</label>
+          <select id="importFolderGroup" class="form-control">
+            <option value="same_object">Same-object Density (NWPU-Crowd)</option>
+            <option value="mixed_object">Mixed-object Density (Cluttered Scene)</option>
+          </select>
+        </div>
+
+        <div style="border-top: 1px solid var(--border-color); padding-top: 12px;">
+          <h4 style="font-size: 0.85rem; margin-bottom: 6px;">Option 1: Scan Local Folder Path</h4>
+          <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 8px;">
+            Enter an absolute or relative directory on your local system to load hundreds of high-resolution images instantly without slow browser upload.
+          </p>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="importFolderPathInput" class="form-control" style="flex: 1;" placeholder="/path/to/nwpu_crowd or sample_data" value="sample_data">
+            <button id="submitImportFolderBtn" class="btn btn-primary">Import Folder</button>
+          </div>
+        </div>
+
+        <div style="border-top: 1px solid var(--border-color); padding-top: 12px;">
+          <h4 style="font-size: 0.85rem; margin-bottom: 6px;">Option 2: Import Dataset Folder (Images + Annotation JSONs)</h4>
+          <p style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 8px;">
+            NWPU-Crowd layout — a root folder containing <code style="font-family: var(--font-mono); color: #67e8f9;">images/</code> and
+            <code style="font-family: var(--font-mono); color: #67e8f9;">jsons/</code>
+            (<code style="font-family: var(--font-mono);">{"img_id": "0008.jpg", "points": [[x, y], ...]}</code>).
+            Images with points are marked <strong>completed</strong>; empty ones stay <strong>todo</strong> for labeling.
+          </p>
+          <div style="display: flex; gap: 8px; margin-bottom: 6px;">
+            <input type="text" id="datasetImportPathInput" class="form-control" style="flex: 1;" placeholder="/path/to/NWPU-Crowd-HRVS-500">
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="datasetImportNameInput" class="form-control" style="flex: 1;" placeholder="Dataset name (optional — defaults to folder name)">
+            <button id="submitDatasetImportBtn" class="btn btn-primary">Import Dataset</button>
+          </div>
+        </div>
+
+        <div style="border-top: 1px solid var(--border-color); padding-top: 12px;">
+          <h4 style="font-size: 0.85rem; margin-bottom: 6px;">Option 3: Select Files / Folder from Browser</h4>
+          <input type="file" id="fileUploadInput" multiple accept="image/*" class="form-control">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Export Modal -->
+  <div id="exportModal" class="modal-overlay">
+    <div class="modal-content" style="max-width: 650px;">
+      <div class="modal-header">
+        <span class="modal-title">Export Annotations (HRVS Benchmark Format)</span>
+        <button id="closeExportBtn" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 0.8rem; color: var(--text-secondary);">
+          All exported point coordinates are preserved exactly on the original image pixel resolution, with normalized coordinates [0, 1] and companion Q&A pairs.
+        </p>
+        <p style="font-size: 0.78rem; color: var(--text-secondary);">
+          📂 Annotations are also auto-saved live as per-image JSON files under
+          <code style="font-family: var(--font-mono); color: #67e8f9;">storage/annotations/same_object/</code> and
+          <code style="font-family: var(--font-mono); color: #67e8f9;">storage/annotations/mixed_object/</code>
+          — every add / edit / delete rewrites the file instantly.
+        </p>
+
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <button id="downloadJsonBtn" class="btn btn-primary">📥 Download Full Benchmark JSON</button>
+          <button id="downloadCsvBtn" class="btn">📊 Download Points CSV</button>
+          <button id="downloadSingleJsonBtn" class="btn">📄 Download Active Image JSON</button>
+          <button id="syncAnnotationFilesBtn" class="btn" title="Force-rewrite every per-image annotation JSON from the database">🔄 Sync Annotation Files</button>
+        </div>
+
+        <div class="form-group" style="margin-top: 10px;">
+          <label class="form-label">Live JSON Schema Preview:</label>
+          <pre id="exportJsonPreview" style="background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px; font-family: var(--font-mono); font-size: 0.7rem; max-height: 250px; overflow-y: auto; color: #a5b4fc;"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Keyboard Shortcuts Modal -->
+  <div id="shortcutsModal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span class="modal-title">Keyboard Shortcuts & Ergonomics</span>
+        <button id="closeShortcutsBtn" class="modal-close-btn">&times;</button>
+      </div>
+      <div class="modal-body">
+        <table class="shortcuts-table">
+          <tbody>
+            <tr><td><span class="kbd-badge">A</span> or <span class="kbd-badge">&larr;</span></td><td>Previous image</td></tr>
+            <tr><td><span class="kbd-badge">D</span> or <span class="kbd-badge">&rarr;</span></td><td>Next image</td></tr>
+            <tr><td><span class="kbd-badge">F</span> or <span class="kbd-badge">R</span></td><td>Fit image to screen (Reset zoom)</td></tr>
+            <tr><td><span class="kbd-badge">Z</span></td><td>Zoom to actual pixels (1:1) for precise placement</td></tr>
+            <tr><td><span class="kbd-badge">Left Drag</span> (empty area)</td><td>Pan view (hold and move mouse)</td></tr>
+            <tr><td><span class="kbd-badge">Space</span> + Drag</td><td>Pan canvas view (alternative)</td></tr>
+            <tr><td>Mouse Wheel</td><td>Cursor-centered Zoom (0.05x to 40x)</td></tr>
+            <tr><td><span class="kbd-badge">P</span></td><td>Activate Add Point Tool</td></tr>
+            <tr><td><span class="kbd-badge">V</span></td><td>Activate Select / Move Tool</td></tr>
+            <tr><td>Left Click on Point</td><td>Select point & drag to reposition</td></tr>
+            <tr><td><span class="kbd-badge">Delete</span> / <span class="kbd-badge">Backspace</span></td><td>Delete selected point</td></tr>
+            <tr><td>Right Click on Point</td><td>Quick delete point</td></tr>
+            <tr><td><span class="kbd-badge">H</span> (Hold)</td><td>Hide point markers to view raw pixels underneath</td></tr>
+            <tr><td><span class="kbd-badge">Ctrl</span> + <span class="kbd-badge">Z</span></td><td>Undo add, move, or delete point</td></tr>
+            <tr><td><span class="kbd-badge">Ctrl</span> + <span class="kbd-badge">Y</span></td><td>Redo action</td></tr>
+            <tr><td><span class="kbd-badge">1</span> - <span class="kbd-badge">9</span></td><td>Quickly switch active category</td></tr>
+            <tr><td><span class="kbd-badge">Esc</span></td><td>Close dialogs / deselect point / cancel QA editor</td></tr>
+            <tr><td><span class="kbd-badge">?</span></td><td>Toggle this shortcuts dialog</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer"></div>
+
+  <!-- Entry Script (ES6 Module) -->
+  <!-- __APP_VERSION__ is replaced by the server with the newest asset mtime:
+       any JS/CSS change produces fresh URLs so browsers never serve stale
+       cached modules after a refresh. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "app/canvas_viewport": "/static/js/canvas_viewport.js?v=__APP_VERSION__",
+        "app/point_workflow": "/static/js/point_workflow.js?v=__APP_VERSION__",
+        "app/qa_workflow": "/static/js/qa_workflow.js?v=__APP_VERSION__"
+      }
+    }
+  </script>
+  <script type="module" src="/static/js/app.js?v=__APP_VERSION__"></script>
+</body>
+</html>

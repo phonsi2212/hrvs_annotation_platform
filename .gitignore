@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Storage & Runtime Data (Exclude databases, logs, exports, backups)
+storage/hrvs_annotations.db
+storage/hrvs_annotations.db-*
+storage/*.log
+storage/server.log
+storage/auto_backups/*
+!storage/auto_backups/.gitkeep
+storage/exports/*
+!storage/exports/.gitkeep
+storage/thumbnails/*
+!storage/thumbnails/.gitkeep
+storage/uploaded_images/*
+!storage/uploaded_images/.gitkeep
+storage/annotations/same_object/*
+!storage/annotations/same_object/.gitkeep
+storage/annotations/mixed_object/*
+!storage/annotations/mixed_object/.gitkeep
+
+# IDE and OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

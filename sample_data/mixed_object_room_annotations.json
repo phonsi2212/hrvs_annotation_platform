@@ -1,0 +1,374 @@
+{
+  "image_file": "mixed_object_room.jpg",
+  "density_group": "mixed_object",
+  "width": 3840,
+  "height": 2160,
+  "points": [
+    {
+      "point_id": "pt_001",
+      "x": 181.0,
+      "y": 210.0,
+      "x_norm": 0.047135,
+      "y_norm": 0.097222,
+      "category": "book",
+      "attributes": {
+        "color": "blue",
+        "state": "standing"
+      }
+    },
+    {
+      "point_id": "pt_002",
+      "x": 362.0,
+      "y": 197.0,
+      "x_norm": 0.094271,
+      "y_norm": 0.091204,
+      "category": "book",
+      "attributes": {
+        "color": "green",
+        "state": "standing"
+      }
+    },
+    {
+      "point_id": "pt_003",
+      "x": 422.0,
+      "y": 198.0,
+      "x_norm": 0.109896,
+      "y_norm": 0.091667,
+      "category": "book",
+      "attributes": {
+        "color": "green",
+        "state": "standing"
+      }
+    },
+    {
+      "point_id": "pt_004",
+      "x": 454.0,
+      "y": 219.0,
+      "x_norm": 0.118229,
+      "y_norm": 0.101389,
+      "category": "book",
+      "attributes": {
+        "color": "green",
+        "state": "standing"
+      }
+    },
+    {
+      "point_id": "pt_005",
+      "x": 690.0,
+      "y": 208.0,
+      "x_norm": 0.179688,
+      "y_norm": 0.096296,
+      "category": "book",
+      "attributes": {
+        "color": "blue",
+        "state": "standing"
+      }
+    },
+    {
+      "point_id": "pt_006",
+      "x": 124.0,
+      "y": 406.0,
+      "x_norm": 0.032292,
+      "y_norm": 0.187963,
+      "category": "book",
+      "attributes": {
+        "color": "red",
+        "state": "standing"
+      }
+    },
+    {
+      "point_id": "pt_007",
+      "x": 396.0,
+      "y": 399.0,
+      "x_norm": 0.103125,
+      "y_norm": 0.184722,
+      "category": "book",
+      "attributes": {
+        "color": "blue",
+        "state": "standing"
+      }
+    },
+    {
+      "point_id": "pt_008",
+      "x": 455.0,
+      "y": 404.0,
+      "x_norm": 0.11849,
+      "y_norm": 0.187037,
+      "category": "book",
+      "attributes": {
+        "color": "green",
+        "state": "standing"
+      }
+    },
+    {
+      "point_id": "pt_009",
+      "x": 661.0,
+      "y": 405.0,
+      "x_norm": 0.172135,
+      "y_norm": 0.1875,
+      "category": "book",
+      "attributes": {
+        "color": "red",
+        "state": "standing"
+      }
+    },
+    {
+      "point_id": "pt_010",
+      "x": 124.0,
+      "y": 604.0,
+      "x_norm": 0.032292,
+      "y_norm": 0.27963,
+      "category": "book",
+      "attributes": {
+        "color": "blue",
+        "state": "standing"
+      }
+    },
+    {
+      "point_id": "pt_011",
+      "x": 242.0,
+      "y": 604.0,
+      "x_norm": 0.063021,
+      "y_norm": 0.27963,
+      "category": "book",
+      "attributes": {
+        "color": "green",
+        "state": "standing"
+      }
+    },
+    {
+      "point_id": "pt_012",
+      "x": 591.0,
+      "y": 619.0,
+      "x_norm": 0.153906,
+      "y_norm": 0.286574,
+      "category": "book",
+      "attributes": {
+        "color": "green",
+        "state": "standing"
+      }
+    },
+    {
+      "point_id": "pt_013",
+      "x": 652.0,
+      "y": 606.0,
+      "x_norm": 0.169792,
+      "y_norm": 0.280556,
+      "category": "book",
+      "attributes": {
+        "color": "blue",
+        "state": "standing"
+      }
+    },
+    {
+      "point_id": "pt_014",
+      "x": 368.0,
+      "y": 801.0,
+      "x_norm": 0.095833,
+      "y_norm": 0.370833,
+      "category": "book",
+      "attributes": {
+        "color": "blue",
+        "state": "standing"
+      }
+    },
+    {
+      "point_id": "pt_015",
+      "x": 488.0,
+      "y": 809.0,
+      "x_norm": 0.127083,
+      "y_norm": 0.374537,
+      "category": "book",
+      "attributes": {
+        "color": "blue",
+        "state": "standing"
+      }
+    },
+    {
+      "point_id": "pt_016",
+      "x": 630.0,
+      "y": 816.0,
+      "x_norm": 0.164062,
+      "y_norm": 0.377778,
+      "category": "book",
+      "attributes": {
+        "color": "green",
+        "state": "standing"
+      }
+    },
+    {
+      "point_id": "pt_017",
+      "x": 663.0,
+      "y": 795.0,
+      "x_norm": 0.172656,
+      "y_norm": 0.368056,
+      "category": "book",
+      "attributes": {
+        "color": "red",
+        "state": "standing"
+      }
+    },
+    {
+      "point_id": "pt_018",
+      "x": 695.0,
+      "y": 815.0,
+      "x_norm": 0.18099,
+      "y_norm": 0.377315,
+      "category": "book",
+      "attributes": {
+        "color": "red",
+        "state": "standing"
+      }
+    },
+    {
+      "point_id": "pt_019",
+      "x": 337.0,
+      "y": 1016.0,
+      "x_norm": 0.08776,
+      "y_norm": 0.47037,
+      "category": "book",
+      "attributes": {
+        "color": "blue",
+        "state": "standing"
+      }
+    },
+    {
+      "point_id": "pt_020",
+      "x": 535.0,
+      "y": 1006.0,
+      "x_norm": 0.139323,
+      "y_norm": 0.465741,
+      "category": "book",
+      "attributes": {
+        "color": "green",
+        "state": "standing"
+      }
+    },
+    {
+      "point_id": "pt_021",
+      "x": 1300.0,
+      "y": 300.0,
+      "x_norm": 0.338542,
+      "y_norm": 0.138889,
+      "category": "clock",
+      "attributes": {
+        "color": "white_black",
+        "state": "hanging"
+      }
+    },
+    {
+      "point_id": "pt_022",
+      "x": 1630.0,
+      "y": 1220.0,
+      "x_norm": 0.424479,
+      "y_norm": 0.564815,
+      "category": "laptop",
+      "attributes": {
+        "color": "silver",
+        "state": "open"
+      }
+    },
+    {
+      "point_id": "pt_023",
+      "x": 1915.0,
+      "y": 1215.0,
+      "x_norm": 0.498698,
+      "y_norm": 0.5625,
+      "category": "cup",
+      "attributes": {
+        "color": "red",
+        "state": "filled"
+      }
+    },
+    {
+      "point_id": "pt_024",
+      "x": 2325.0,
+      "y": 1145.0,
+      "x_norm": 0.605469,
+      "y_norm": 0.530093,
+      "category": "monitor",
+      "attributes": {
+        "color": "black",
+        "state": "on"
+      }
+    },
+    {
+      "point_id": "pt_025",
+      "x": 2825.0,
+      "y": 1155.0,
+      "x_norm": 0.735677,
+      "y_norm": 0.534722,
+      "category": "bottle",
+      "attributes": {
+        "color": "cyan_transparent",
+        "material": "plastic"
+      }
+    },
+    {
+      "point_id": "pt_026",
+      "x": 1100.0,
+      "y": 890.0,
+      "x_norm": 0.286458,
+      "y_norm": 0.412037,
+      "category": "lamp",
+      "attributes": {
+        "color": "yellow",
+        "state": "adjustable"
+      }
+    },
+    {
+      "point_id": "pt_027",
+      "x": 1800.0,
+      "y": 1400.0,
+      "x_norm": 0.46875,
+      "y_norm": 0.648148,
+      "category": "chair",
+      "attributes": {
+        "color": "dark_grey",
+        "material": "mesh"
+      }
+    },
+    {
+      "point_id": "pt_028",
+      "x": 3090.0,
+      "y": 1775.0,
+      "x_norm": 0.804688,
+      "y_norm": 0.821759,
+      "category": "backpack",
+      "attributes": {
+        "color": "navy_blue",
+        "state": "resting_on_floor"
+      }
+    }
+  ],
+  "qa_annotations": [
+    {
+      "qa_id": "qa_001",
+      "task_type": "Attribute Recognition",
+      "question": "What color is the coffee mug next to the laptop on the wooden desk?",
+      "answer": "The coffee mug is red.",
+      "target_point_ids": [
+        "pt_023"
+      ]
+    },
+    {
+      "qa_id": "qa_002",
+      "task_type": "Spatial Relation",
+      "question": "Which electronic devices are placed directly on the main desk surface?",
+      "answer": "A silver laptop and a black dual-monitor display.",
+      "target_point_ids": [
+        "pt_022",
+        "pt_025"
+      ]
+    },
+    {
+      "qa_id": "qa_003",
+      "task_type": "Visual Search",
+      "question": "Where is the wall clock located in the room?",
+      "answer": "It is mounted high on the upper wall to the left of the desk area.",
+      "target_point_ids": [
+        "pt_021"
+      ]
+    }
+  ]
+}

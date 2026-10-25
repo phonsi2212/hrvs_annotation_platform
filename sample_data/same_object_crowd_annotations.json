@@ -1,0 +1,815 @@
+{
+  "image_file": "same_object_crowd.jpg",
+  "density_group": "same_object",
+  "width": 4000,
+  "height": 3000,
+  "points": [
+    {
+      "point_id": "pt_001",
+      "x": 1844.0,
+      "y": 1218.0,
+      "x_norm": 0.461,
+      "y_norm": 0.406,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_002",
+      "x": 1701.0,
+      "y": 704.0,
+      "x_norm": 0.42525,
+      "y_norm": 0.234667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_003",
+      "x": 1344.0,
+      "y": 1186.0,
+      "x_norm": 0.336,
+      "y_norm": 0.395333,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_004",
+      "x": 1303.0,
+      "y": 1527.0,
+      "x_norm": 0.32575,
+      "y_norm": 0.509,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_005",
+      "x": 883.0,
+      "y": 1430.0,
+      "x_norm": 0.22075,
+      "y_norm": 0.476667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_006",
+      "x": 1753.0,
+      "y": 1398.0,
+      "x_norm": 0.43825,
+      "y_norm": 0.466,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_007",
+      "x": 666.0,
+      "y": 890.0,
+      "x_norm": 0.1665,
+      "y_norm": 0.296667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_008",
+      "x": 1342.0,
+      "y": 1027.0,
+      "x_norm": 0.3355,
+      "y_norm": 0.342333,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_009",
+      "x": 1280.0,
+      "y": 952.0,
+      "x_norm": 0.32,
+      "y_norm": 0.317333,
+      "category": "person_head",
+      "attributes": {
+        "color": "yellow_cap",
+        "note": "Person with yellow cap"
+      }
+    },
+    {
+      "point_id": "pt_010",
+      "x": 1435.0,
+      "y": 1363.0,
+      "x_norm": 0.35875,
+      "y_norm": 0.454333,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_011",
+      "x": 965.0,
+      "y": 791.0,
+      "x_norm": 0.24125,
+      "y_norm": 0.263667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_012",
+      "x": 2078.0,
+      "y": 1116.0,
+      "x_norm": 0.5195,
+      "y_norm": 0.372,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_013",
+      "x": 1914.0,
+      "y": 716.0,
+      "x_norm": 0.4785,
+      "y_norm": 0.238667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_014",
+      "x": 1655.0,
+      "y": 810.0,
+      "x_norm": 0.41375,
+      "y_norm": 0.27,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_015",
+      "x": 1013.0,
+      "y": 882.0,
+      "x_norm": 0.25325,
+      "y_norm": 0.294,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_016",
+      "x": 1183.0,
+      "y": 1295.0,
+      "x_norm": 0.29575,
+      "y_norm": 0.431667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_017",
+      "x": 1221.0,
+      "y": 945.0,
+      "x_norm": 0.30525,
+      "y_norm": 0.315,
+      "category": "person_head",
+      "attributes": {
+        "color": "red_hat",
+        "note": "Person with red hat"
+      }
+    },
+    {
+      "point_id": "pt_018",
+      "x": 1365.0,
+      "y": 1187.0,
+      "x_norm": 0.34125,
+      "y_norm": 0.395667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_019",
+      "x": 1569.0,
+      "y": 1281.0,
+      "x_norm": 0.39225,
+      "y_norm": 0.427,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_020",
+      "x": 1433.0,
+      "y": 1179.0,
+      "x_norm": 0.35825,
+      "y_norm": 0.393,
+      "category": "person_head",
+      "attributes": {
+        "color": "red_hat",
+        "note": "Person with red hat"
+      }
+    },
+    {
+      "point_id": "pt_021",
+      "x": 1109.0,
+      "y": 1350.0,
+      "x_norm": 0.27725,
+      "y_norm": 0.45,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_022",
+      "x": 1188.0,
+      "y": 1407.0,
+      "x_norm": 0.297,
+      "y_norm": 0.469,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_023",
+      "x": 1271.0,
+      "y": 846.0,
+      "x_norm": 0.31775,
+      "y_norm": 0.282,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_024",
+      "x": 1117.0,
+      "y": 1260.0,
+      "x_norm": 0.27925,
+      "y_norm": 0.42,
+      "category": "person_head",
+      "attributes": {
+        "color": "red_hat",
+        "note": "Person with red hat"
+      }
+    },
+    {
+      "point_id": "pt_025",
+      "x": 1221.0,
+      "y": 998.0,
+      "x_norm": 0.30525,
+      "y_norm": 0.332667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_026",
+      "x": 1339.0,
+      "y": 663.0,
+      "x_norm": 0.33475,
+      "y_norm": 0.221,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_027",
+      "x": 1079.0,
+      "y": 1415.0,
+      "x_norm": 0.26975,
+      "y_norm": 0.471667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_028",
+      "x": 1939.0,
+      "y": 730.0,
+      "x_norm": 0.48475,
+      "y_norm": 0.243333,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_029",
+      "x": 963.0,
+      "y": 1128.0,
+      "x_norm": 0.24075,
+      "y_norm": 0.376,
+      "category": "person_head",
+      "attributes": {
+        "color": "yellow_cap",
+        "note": "Person with yellow cap"
+      }
+    },
+    {
+      "point_id": "pt_030",
+      "x": 1487.0,
+      "y": 851.0,
+      "x_norm": 0.37175,
+      "y_norm": 0.283667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_031",
+      "x": 1734.0,
+      "y": 713.0,
+      "x_norm": 0.4335,
+      "y_norm": 0.237667,
+      "category": "person_head",
+      "attributes": {
+        "color": "yellow_cap",
+        "note": "Person with yellow cap"
+      }
+    },
+    {
+      "point_id": "pt_032",
+      "x": 982.0,
+      "y": 1047.0,
+      "x_norm": 0.2455,
+      "y_norm": 0.349,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_033",
+      "x": 1692.0,
+      "y": 1006.0,
+      "x_norm": 0.423,
+      "y_norm": 0.335333,
+      "category": "person_head",
+      "attributes": {
+        "color": "yellow_cap",
+        "note": "Person with yellow cap"
+      }
+    },
+    {
+      "point_id": "pt_034",
+      "x": 1746.0,
+      "y": 1262.0,
+      "x_norm": 0.4365,
+      "y_norm": 0.420667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_035",
+      "x": 1204.0,
+      "y": 666.0,
+      "x_norm": 0.301,
+      "y_norm": 0.222,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_036",
+      "x": 2903.0,
+      "y": 1338.0,
+      "x_norm": 0.72575,
+      "y_norm": 0.446,
+      "category": "person_head",
+      "attributes": {
+        "color": "red_hat",
+        "note": "Person with red hat"
+      }
+    },
+    {
+      "point_id": "pt_037",
+      "x": 2960.0,
+      "y": 1234.0,
+      "x_norm": 0.74,
+      "y_norm": 0.411333,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_038",
+      "x": 1964.0,
+      "y": 1340.0,
+      "x_norm": 0.491,
+      "y_norm": 0.446667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_039",
+      "x": 2403.0,
+      "y": 962.0,
+      "x_norm": 0.60075,
+      "y_norm": 0.320667,
+      "category": "person_head",
+      "attributes": {
+        "color": "red_hat",
+        "note": "Person with red hat"
+      }
+    },
+    {
+      "point_id": "pt_040",
+      "x": 2370.0,
+      "y": 1238.0,
+      "x_norm": 0.5925,
+      "y_norm": 0.412667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_041",
+      "x": 2438.0,
+      "y": 1377.0,
+      "x_norm": 0.6095,
+      "y_norm": 0.459,
+      "category": "person_head",
+      "attributes": {
+        "color": "yellow_cap",
+        "note": "Person with yellow cap"
+      }
+    },
+    {
+      "point_id": "pt_042",
+      "x": 2808.0,
+      "y": 1387.0,
+      "x_norm": 0.702,
+      "y_norm": 0.462333,
+      "category": "person_head",
+      "attributes": {
+        "color": "yellow_cap",
+        "note": "Person with yellow cap"
+      }
+    },
+    {
+      "point_id": "pt_043",
+      "x": 2681.0,
+      "y": 1183.0,
+      "x_norm": 0.67025,
+      "y_norm": 0.394333,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_044",
+      "x": 2806.0,
+      "y": 956.0,
+      "x_norm": 0.7015,
+      "y_norm": 0.318667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_045",
+      "x": 3024.0,
+      "y": 1118.0,
+      "x_norm": 0.756,
+      "y_norm": 0.372667,
+      "category": "person_head",
+      "attributes": {
+        "color": "yellow_cap",
+        "note": "Person with yellow cap"
+      }
+    },
+    {
+      "point_id": "pt_046",
+      "x": 2999.0,
+      "y": 956.0,
+      "x_norm": 0.74975,
+      "y_norm": 0.318667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_047",
+      "x": 2823.0,
+      "y": 1194.0,
+      "x_norm": 0.70575,
+      "y_norm": 0.398,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_048",
+      "x": 2294.0,
+      "y": 1435.0,
+      "x_norm": 0.5735,
+      "y_norm": 0.478333,
+      "category": "person_head",
+      "attributes": {
+        "color": "yellow_cap",
+        "note": "Person with yellow cap"
+      }
+    },
+    {
+      "point_id": "pt_049",
+      "x": 2500.0,
+      "y": 780.0,
+      "x_norm": 0.625,
+      "y_norm": 0.26,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_050",
+      "x": 2837.0,
+      "y": 800.0,
+      "x_norm": 0.70925,
+      "y_norm": 0.266667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_051",
+      "x": 3017.0,
+      "y": 1060.0,
+      "x_norm": 0.75425,
+      "y_norm": 0.353333,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_052",
+      "x": 2685.0,
+      "y": 1105.0,
+      "x_norm": 0.67125,
+      "y_norm": 0.368333,
+      "category": "person_head",
+      "attributes": {
+        "color": "red_hat",
+        "note": "Person with red hat"
+      }
+    },
+    {
+      "point_id": "pt_053",
+      "x": 2975.0,
+      "y": 1113.0,
+      "x_norm": 0.74375,
+      "y_norm": 0.371,
+      "category": "person_head",
+      "attributes": {
+        "color": "yellow_cap",
+        "note": "Person with yellow cap"
+      }
+    },
+    {
+      "point_id": "pt_054",
+      "x": 1989.0,
+      "y": 1222.0,
+      "x_norm": 0.49725,
+      "y_norm": 0.407333,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_055",
+      "x": 2799.0,
+      "y": 1521.0,
+      "x_norm": 0.69975,
+      "y_norm": 0.507,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_056",
+      "x": 2577.0,
+      "y": 1268.0,
+      "x_norm": 0.64425,
+      "y_norm": 0.422667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_057",
+      "x": 3127.0,
+      "y": 1334.0,
+      "x_norm": 0.78175,
+      "y_norm": 0.444667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_058",
+      "x": 2508.0,
+      "y": 1309.0,
+      "x_norm": 0.627,
+      "y_norm": 0.436333,
+      "category": "person_head",
+      "attributes": {
+        "color": "red_hat",
+        "note": "Person with red hat"
+      }
+    },
+    {
+      "point_id": "pt_059",
+      "x": 2957.0,
+      "y": 1269.0,
+      "x_norm": 0.73925,
+      "y_norm": 0.423,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_060",
+      "x": 2040.0,
+      "y": 933.0,
+      "x_norm": 0.51,
+      "y_norm": 0.311,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_061",
+      "x": 2944.0,
+      "y": 1441.0,
+      "x_norm": 0.736,
+      "y_norm": 0.480333,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_062",
+      "x": 2023.0,
+      "y": 1038.0,
+      "x_norm": 0.50575,
+      "y_norm": 0.346,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_063",
+      "x": 3074.0,
+      "y": 798.0,
+      "x_norm": 0.7685,
+      "y_norm": 0.266,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_064",
+      "x": 2603.0,
+      "y": 1280.0,
+      "x_norm": 0.65075,
+      "y_norm": 0.426667,
+      "category": "person_head",
+      "attributes": {
+        "color": "yellow_cap",
+        "note": "Person with yellow cap"
+      }
+    },
+    {
+      "point_id": "pt_065",
+      "x": 2374.0,
+      "y": 1142.0,
+      "x_norm": 0.5935,
+      "y_norm": 0.380667,
+      "category": "person_head",
+      "attributes": {
+        "color": "yellow_cap",
+        "note": "Person with yellow cap"
+      }
+    },
+    {
+      "point_id": "pt_066",
+      "x": 3158.0,
+      "y": 1112.0,
+      "x_norm": 0.7895,
+      "y_norm": 0.370667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_067",
+      "x": 2342.0,
+      "y": 1408.0,
+      "x_norm": 0.5855,
+      "y_norm": 0.469333,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_068",
+      "x": 2252.0,
+      "y": 1302.0,
+      "x_norm": 0.563,
+      "y_norm": 0.434,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_069",
+      "x": 1479.0,
+      "y": 2066.0,
+      "x_norm": 0.36975,
+      "y_norm": 0.688667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_070",
+      "x": 1858.0,
+      "y": 2528.0,
+      "x_norm": 0.4645,
+      "y_norm": 0.842667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_071",
+      "x": 1689.0,
+      "y": 2251.0,
+      "x_norm": 0.42225,
+      "y_norm": 0.750333,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_072",
+      "x": 1932.0,
+      "y": 2321.0,
+      "x_norm": 0.483,
+      "y_norm": 0.773667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_073",
+      "x": 2319.0,
+      "y": 1841.0,
+      "x_norm": 0.57975,
+      "y_norm": 0.613667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_074",
+      "x": 1628.0,
+      "y": 1921.0,
+      "x_norm": 0.407,
+      "y_norm": 0.640333,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_075",
+      "x": 2478.0,
+      "y": 2258.0,
+      "x_norm": 0.6195,
+      "y_norm": 0.752667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_076",
+      "x": 1137.0,
+      "y": 1821.0,
+      "x_norm": 0.28425,
+      "y_norm": 0.607,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_077",
+      "x": 2165.0,
+      "y": 1952.0,
+      "x_norm": 0.54125,
+      "y_norm": 0.650667,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_078",
+      "x": 3051.0,
+      "y": 1840.0,
+      "x_norm": 0.76275,
+      "y_norm": 0.613333,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_079",
+      "x": 2191.0,
+      "y": 1788.0,
+      "x_norm": 0.54775,
+      "y_norm": 0.596,
+      "category": "person_head",
+      "attributes": {}
+    },
+    {
+      "point_id": "pt_080",
+      "x": 2885.0,
+      "y": 2207.0,
+      "x_norm": 0.72125,
+      "y_norm": 0.735667,
+      "category": "person_head",
+      "attributes": {
+        "color": "yellow_cap",
+        "note": "Person with yellow cap"
+      }
+    }
+  ],
+  "qa_annotations": [
+    {
+      "qa_id": "qa_001",
+      "task_type": "Visual Search",
+      "question": "Where is the person wearing a red hat near the upper-left cluster?",
+      "answer": "Located at upper-left dense cluster around coordinates (1420, 890).",
+      "target_point_ids": [
+        "pt_017",
+        "pt_020"
+      ]
+    },
+    {
+      "qa_id": "qa_002",
+      "task_type": "Counting",
+      "question": "How many individuals are distinctly annotated in the center dense zone?",
+      "answer": "There are 80 target annotated person heads across the high-density sections.",
+      "target_point_ids": [
+        "pt_001",
+        "pt_002",
+        "pt_003",
+        "pt_004",
+        "pt_005",
+        "pt_006",
+        "pt_007",
+        "pt_008",
+        "pt_009",
+        "pt_010"
+      ]
+    }
+  ]
+}

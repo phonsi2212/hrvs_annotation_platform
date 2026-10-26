@@ -4,11 +4,12 @@
 
 import { CanvasViewport } from 'app/canvas_viewport';
 import { PointWorkflow } from 'app/point_workflow';
+import { BBoxWorkflow } from 'app/bbox_workflow';
 import { QAWorkflow } from 'app/qa_workflow';
 
 export class App {
   constructor() {
-    this.currentWorkflow = 'point'; // 'point' | 'qa'
+    this.currentWorkflow = 'point'; // 'point' | 'bbox' | 'qa'
     this.images = [];
     this.activeImageIndex = 0;
     this.activeImage = null;
@@ -19,8 +20,9 @@ export class App {
     this.activeDataset = null;
 
     // Read-only protection: completed images cannot be edited until their
-    // status is reverted (per workflow: points vs. Q&A pairs).
+    // status is reverted (per workflow: points, bboxes, vs. Q&A pairs).
     this.pointLocked = false;
+    this.bboxLocked = false;
     this.qaLocked = false;
 
     // Filters
@@ -39,6 +41,7 @@ export class App {
 
     // Initialize Workflows
     this.pointWorkflow = new PointWorkflow(this);
+    this.bboxWorkflow = new BBoxWorkflow(this);
     this.qaWorkflow = new QAWorkflow(this);
 
     this.initUI();
@@ -55,13 +58,18 @@ export class App {
   initUI() {
     // Mode Switcher Tabs
     this.tabPointMode = document.getElementById('tabPointMode');
+    this.tabBBoxMode = document.getElementById('tabBBoxMode');
     this.tabQAMode = document.getElementById('tabQAMode');
     this.panelPointWorkflow = document.getElementById('panelPointWorkflow');
+    this.panelBBoxWorkflow = document.getElementById('panelBBoxWorkflow');
     this.panelQAWorkflow = document.getElementById('panelQAWorkflow');
     this.modeBannerQA = document.getElementById('modeBannerQA');
 
     if (this.tabPointMode) {
       this.tabPointMode.addEventListener('click', () => this.switchWorkflow('point'));
+    }
+    if (this.tabBBoxMode) {
+      this.tabBBoxMode.addEventListener('click', () => this.switchWorkflow('bbox'));
     }
     if (this.tabQAMode) {
       this.tabQAMode.addEventListener('click', () => this.switchWorkflow('qa'));
@@ -110,13 +118,23 @@ export class App {
     // Image Status & Density dropdowns in Viewport / Panel
     this.imageStatusSelect = document.getElementById('imageStatusSelect');
     this.imageDensitySelect = document.getElementById('imageDensitySelect');
+    this.bboxDensitySelect = document.getElementById('bboxDensitySelect');
     if (this.imageStatusSelect) {
       this.imageStatusSelect.addEventListener('change', (e) => {
-        this.updateImageStatus(e.target.value);
+        if (this.currentWorkflow === 'bbox') {
+          this.updateBBoxStatus(e.target.value);
+        } else {
+          this.updateImageStatus(e.target.value);
+        }
       });
     }
     if (this.imageDensitySelect) {
       this.imageDensitySelect.addEventListener('change', (e) => {
+        this.updateImageDensity(e.target.value);
+      });
+    }
+    if (this.bboxDensitySelect) {
+      this.bboxDensitySelect.addEventListener('change', (e) => {
         this.updateImageDensity(e.target.value);
       });
     }
@@ -172,11 +190,31 @@ export class App {
 
     // Finish button: mark the image completed + write its final annotation JSON file.
     // Once completed the image is locked (read-only) and the same button turns
-    // into Unlock, which reverts the status so points can be edited again.
+    // into Unlock, which reverts the status so points / bboxes can be edited again.
     const finishBtn = document.getElementById('finishImageBtn');
     if (finishBtn) {
       finishBtn.addEventListener('click', async () => {
         if (!this.activeImage) return;
+        if (this.currentWorkflow === 'bbox') {
+          if (this.bboxLocked) {
+            await this.updateBBoxStatus('in_progress');
+            this.showToast('Unlocked — bounding boxes are editable again (BBox status: in progress)', 'info');
+            return;
+          }
+          if (this.viewport.bboxes.length === 0 &&
+              !confirm('This image has no bounding boxes. Mark BBox status as completed anyway?')) {
+            return;
+          }
+          finishBtn.disabled = true;
+          try {
+            await this.updateBBoxStatus('completed');
+            this.showToast('BBox Completed — annotation saved & locked', 'success');
+          } finally {
+            finishBtn.disabled = false;
+          }
+          return;
+        }
+
         if (this.pointLocked) {
           await this.updateImageStatus('in_progress');
           this.showToast('Unlocked — points are editable again (status: in progress)', 'info');
@@ -523,6 +561,7 @@ export class App {
     const closeExportBtn = document.getElementById('closeExportBtn');
     const downloadJsonBtn = document.getElementById('downloadJsonBtn');
     const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+    const downloadBBoxesCsvBtn = document.getElementById('downloadBBoxesCsvBtn');
     const downloadSingleJsonBtn = document.getElementById('downloadSingleJsonBtn');
 
     if (openExportBtn && exportModal) {
@@ -542,6 +581,11 @@ export class App {
     if (downloadCsvBtn) {
       downloadCsvBtn.addEventListener('click', () => {
         window.location.href = '/api/export/csv';
+      });
+    }
+    if (downloadBBoxesCsvBtn) {
+      downloadBBoxesCsvBtn.addEventListener('click', () => {
+        window.location.href = '/api/export/bboxes-csv';
       });
     }
     if (downloadSingleJsonBtn) {
@@ -632,13 +676,15 @@ export class App {
       if (e.key === 'z' || e.key === 'Z') {
         this.viewport.zoomToActual();
       }
-      // Escape: close modal > cancel QA editor > deselect point
+      // Escape: close modal > cancel QA editor > deselect point or bbox
       if (e.key === 'Escape') {
         const openModal = document.querySelector('.modal-overlay.open');
         if (openModal) {
           openModal.classList.remove('open');
         } else if (this.currentWorkflow === 'qa' && this.qaWorkflow && this.qaWorkflow.editingQA) {
           this.qaWorkflow.cancelQAEditor();
+        } else if (this.currentWorkflow === 'bbox' && this.bboxWorkflow) {
+          this.bboxWorkflow.deselectBBox();
         } else if (this.pointWorkflow) {
           this.pointWorkflow.deselectPoint();
         }
@@ -655,29 +701,75 @@ export class App {
     this.currentWorkflow = mode;
     this.viewport.workflowMode = mode;
 
+    const addBtn = document.getElementById('toolAddPoint');
+    const selectBtn = document.getElementById('toolSelectPoint');
+
     if (mode === 'point') {
-      this.tabPointMode.classList.add('active');
-      this.tabQAMode.classList.remove('active');
+      if (this.tabPointMode) this.tabPointMode.classList.add('active');
+      if (this.tabBBoxMode) this.tabBBoxMode.classList.remove('active');
+      if (this.tabQAMode) this.tabQAMode.classList.remove('active');
       if (this.panelPointWorkflow) this.panelPointWorkflow.style.display = 'flex';
+      if (this.panelBBoxWorkflow) this.panelBBoxWorkflow.style.display = 'none';
       if (this.panelQAWorkflow) this.panelQAWorkflow.style.display = 'none';
       if (this.modeBannerQA) this.modeBannerQA.style.display = 'none';
+      if (addBtn) {
+        addBtn.innerHTML = '<span>➕ Add</span>';
+        addBtn.title = 'Add Point (Key: P)';
+      }
+      if (selectBtn) {
+        selectBtn.title = 'Select / Move Point (Key: V)';
+      }
+      this.pointWorkflow.setTool(this.pointWorkflow.activeTool);
       this.showToast('Mode 1: Point Annotation active', 'info');
-    } else if (mode === 'qa') {
-      this.tabPointMode.classList.remove('active');
-      this.tabQAMode.classList.add('active');
+    } else if (mode === 'bbox') {
+      if (this.tabPointMode) this.tabPointMode.classList.remove('active');
+      if (this.tabBBoxMode) this.tabBBoxMode.classList.add('active');
+      if (this.tabQAMode) this.tabQAMode.classList.remove('active');
       if (this.panelPointWorkflow) this.panelPointWorkflow.style.display = 'none';
+      if (this.panelBBoxWorkflow) this.panelBBoxWorkflow.style.display = 'flex';
+      if (this.panelQAWorkflow) this.panelQAWorkflow.style.display = 'none';
+      if (this.modeBannerQA) this.modeBannerQA.style.display = 'none';
+      if (addBtn) {
+        addBtn.innerHTML = '<span>➕ Draw Box</span>';
+        addBtn.title = 'Draw Bounding Box (Keys: B or P)';
+      }
+      if (selectBtn) {
+        selectBtn.title = 'Select / Move / Resize BBox (Key: V)';
+      }
+      this.bboxWorkflow.setTool(this.bboxWorkflow.activeTool);
+      this.showToast('Mode 2: Bounding Box Annotation active', 'info');
+    } else if (mode === 'qa') {
+      if (this.tabPointMode) this.tabPointMode.classList.remove('active');
+      if (this.tabBBoxMode) this.tabBBoxMode.classList.remove('active');
+      if (this.tabQAMode) this.tabQAMode.classList.add('active');
+      if (this.panelPointWorkflow) this.panelPointWorkflow.style.display = 'none';
+      if (this.panelBBoxWorkflow) this.panelBBoxWorkflow.style.display = 'none';
       if (this.panelQAWorkflow) this.panelQAWorkflow.style.display = 'flex';
       if (this.modeBannerQA) this.modeBannerQA.style.display = 'block';
-      this.showToast('Mode 2: QA Annotation active (Canvas locked for point edits)', 'info');
+      this.showToast('Mode 3: QA Annotation active (Click points/boxes to link targets)', 'info');
     }
 
-    // Applies per-workflow read-only locks (QA mode disables point tools too)
+    if (this.imageStatusSelect && this.activeImage) {
+      this.imageStatusSelect.value = mode === 'bbox'
+        ? (this.activeImage.bbox_status || 'todo')
+        : this.activeImage.status;
+    }
+
+    // Applies per-workflow read-only locks (QA mode disables point/bbox tools too)
     this.updateLockStates();
     // Sidebar status badges + the status filter follow the active workflow's
     // status, so re-label the filter and refetch with the matching param
     if (this.statusFilterSelect) {
-      this.statusFilterSelect.title = mode === 'qa' ? 'Filter by QA Status' : 'Filter by Status';
-      this.statusFilterSelect.options[0].text = mode === 'qa' ? 'QA Status: All' : 'Status: All';
+      if (mode === 'qa') {
+        this.statusFilterSelect.title = 'Filter by QA Status';
+        this.statusFilterSelect.options[0].text = 'QA Status: All';
+      } else if (mode === 'bbox') {
+        this.statusFilterSelect.title = 'Filter by BBox Status';
+        this.statusFilterSelect.options[0].text = 'BBox Status: All';
+      } else {
+        this.statusFilterSelect.title = 'Filter by Point Status';
+        this.statusFilterSelect.options[0].text = 'Status: All';
+      }
     }
     this.loadImages();
     this.viewport.requestRender();
@@ -686,32 +778,39 @@ export class App {
   /**
    * Completed images are read-only, per workflow:
    *  - Point editing locks when the image `status` is 'completed'
+   *  - BBox editing locks when `bbox_status` is 'completed'
    *  - Q&A editing locks when `qa_status` is 'completed' (image has Q&A pairs)
    * Unlocking = reverting the respective status (dropdown or Finish/Unlock button).
    */
   updateLockStates() {
     const img = this.activeImage;
     this.pointLocked = !!(img && img.status === 'completed');
+    this.bboxLocked = !!(img && img.bbox_status === 'completed');
     this.qaLocked = !!(img && img.qa_status === 'completed');
     this.viewport.pointsLocked = this.pointLocked;
+    this.viewport.bboxesLocked = this.bboxLocked;
 
-    // Point tools: disabled in QA mode or when the image is point-locked
+    const activeCanvasLocked = (this.currentWorkflow === 'qa') ||
+      (this.currentWorkflow === 'bbox' ? this.bboxLocked : this.pointLocked);
+
+    // Canvas tools: disabled in QA mode or when the active workflow is locked
     const pointToolIds = ['toolAddPoint', 'toolSelectPoint', 'toolUndo', 'toolRedo', 'toolClearPoints'];
     pointToolIds.forEach((id) => {
       const el = document.getElementById(id);
-      if (el) el.disabled = (this.currentWorkflow === 'qa') || this.pointLocked;
+      if (el) el.disabled = activeCanvasLocked;
     });
 
-    // Point lock badge + Finish <-> Unlock button
+    // Lock badge + Finish <-> Unlock button for Point / BBox mode
+    const isLocked = this.currentWorkflow === 'bbox' ? this.bboxLocked : this.pointLocked;
     const pointLockBadge = document.getElementById('pointLockBadge');
-    if (pointLockBadge) pointLockBadge.style.display = this.pointLocked ? 'inline-flex' : 'none';
+    if (pointLockBadge) pointLockBadge.style.display = isLocked ? 'inline-flex' : 'none';
     const finishBtn = document.getElementById('finishImageBtn');
     if (finishBtn) {
-      finishBtn.innerHTML = this.pointLocked ? '<span>🔓 Unlock</span>' : '<span>✅ Finish</span>';
-      finishBtn.classList.toggle('unlock-btn', this.pointLocked);
-      finishBtn.title = this.pointLocked
-        ? 'Image is completed and locked. Click to revert to In Progress and edit points.'
-        : 'Mark this image as Completed and save its annotation JSON file';
+      finishBtn.innerHTML = isLocked ? '<span>🔓 Unlock</span>' : '<span>✅ Finish</span>';
+      finishBtn.classList.toggle('unlock-btn', isLocked);
+      finishBtn.title = isLocked
+        ? 'Completed and locked. Click to revert to In Progress and edit annotations.'
+        : 'Mark as Completed and save its annotation JSON file';
     }
 
     // QA status select, lock banner, Finish QA <-> Unlock QA button
@@ -728,6 +827,28 @@ export class App {
     }
 
     if (this.qaWorkflow) this.qaWorkflow.setLocked(this.qaLocked);
+  }
+
+  async updateBBoxStatus(newStatus) {
+    if (!this.activeImage) return;
+    try {
+      const res = await fetch(`/api/images/${this.activeImage.image_id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ bbox_status: newStatus })
+      });
+      if (res.ok) {
+        this.activeImage.bbox_status = newStatus;
+        if (this.imageStatusSelect && this.currentWorkflow === 'bbox') {
+          this.imageStatusSelect.value = newStatus;
+        }
+        this.updateLockStates();
+        this.loadImages();
+        this.showToast(`BBox status changed to ${newStatus.replace('_', ' ')}`, 'info');
+      }
+    } catch (err) {
+      console.error(err);
+    }
   }
 
   async updateQAStatus(newStatus) {
@@ -751,8 +872,10 @@ export class App {
 
   async loadImages() {
     const params = new URLSearchParams();
-    // Status filter follows the active workflow: QA mode filters qa_status
-    const statusParam = this.currentWorkflow === 'qa' ? 'qa_status' : 'status';
+    // Status filter follows the active workflow
+    const statusParam = this.currentWorkflow === 'qa'
+      ? 'qa_status'
+      : (this.currentWorkflow === 'bbox' ? 'bbox_status' : 'status');
     if (this.statusFilter !== 'all') params.append(statusParam, this.statusFilter);
     if (this.densityFilter !== 'all') params.append('density_group', this.densityFilter);
     if (this.searchQuery) params.append('search', this.searchQuery);
@@ -840,6 +963,7 @@ export class App {
             ${densityTags.join('')}
             <span style="font-family: var(--font-mono); font-size: 0.65rem; color: var(--text-secondary);">🖼 ${ds.image_count}</span>
             <span style="font-family: var(--font-mono); font-size: 0.65rem; color: #fca5a5;">📍 ${this.formatCount(ds.point_count)}</span>
+            <span style="font-family: var(--font-mono); font-size: 0.65rem; color: #fbbf24;">📦 ${this.formatCount(ds.bbox_count || 0)}</span>
             <span style="font-family: var(--font-mono); font-size: 0.65rem; color: #6ee7b7;" title="Images with completed Q&A">💬 ${ds.qa_completed_count}/${ds.image_count}</span>
           </div>
         </div>
@@ -917,11 +1041,11 @@ export class App {
       const densityClass = img.density_group === 'same_object' ? 'density-same' : 'density-mixed';
       const densityLabel = img.density_group === 'same_object' ? 'Same-obj' : 'Mixed-obj';
 
-      // Sidebar badge tracks the active workflow: QA mode shows qa_status
-      const badgeStatus = this.currentWorkflow === 'qa' ? (img.qa_status || 'todo') : img.status;
-      const badgeTitle = this.currentWorkflow === 'qa'
-        ? `QA status (point status: ${img.status.replace('_', ' ')})`
-        : `Point status (QA status: ${(img.qa_status || 'todo').replace('_', ' ')})`;
+      // Sidebar badge tracks the active workflow: QA mode shows qa_status, BBox mode shows bbox_status
+      const badgeStatus = this.currentWorkflow === 'qa'
+        ? (img.qa_status || 'todo')
+        : (this.currentWorkflow === 'bbox' ? (img.bbox_status || 'todo') : img.status);
+      const badgeTitle = `Point: ${img.status.replace('_', ' ')} | BBox: ${(img.bbox_status || 'todo').replace('_', ' ')} | QA: ${(img.qa_status || 'todo').replace('_', ' ')}`;
 
       card.innerHTML = `
         <img class="card-thumb" src="/api/images/${encodeURIComponent(img.image_id)}/thumbnail"
@@ -939,6 +1063,7 @@ export class App {
           </div>
           <div class="tag-counts">
             <span class="count-point" id="card-pts-${img.image_id}">📍 ${img.point_count}</span>
+            <span class="count-bbox" id="card-bbs-${img.image_id}" title="BBox status: ${(img.bbox_status || 'todo').replace('_', ' ')}">📦 ${img.bbox_count || 0}</span>
             <span class="count-qa ${img.qa_status === 'completed' ? 'qa-done' : ''}" id="card-qa-${img.image_id}" title="QA status: ${(img.qa_status || 'todo').replace('_', ' ')}">💬 ${img.qa_count}</span>
           </div>
         </div>
@@ -978,10 +1103,15 @@ export class App {
         this.hudRes.textContent = `${fullImg.width} × ${fullImg.height} px`;
       }
       if (this.imageStatusSelect) {
-        this.imageStatusSelect.value = fullImg.status;
+        this.imageStatusSelect.value = this.currentWorkflow === 'bbox'
+          ? (fullImg.bbox_status || 'todo')
+          : fullImg.status;
       }
       if (this.imageDensitySelect) {
         this.imageDensitySelect.value = fullImg.density_group;
+      }
+      if (this.bboxDensitySelect) {
+        this.bboxDensitySelect.value = fullImg.density_group;
       }
       if (this.qaStatusSelect) {
         this.qaStatusSelect.value = fullImg.qa_status || 'todo';
@@ -990,21 +1120,28 @@ export class App {
       // Reset per-image workflow state (undo history, selection, open editors)
       // so actions from the previous image can never leak into this one.
       this.pointWorkflow.resetForImage();
+      this.bboxWorkflow.resetForImage();
       this.qaWorkflow.resetForImage();
 
       // Load image into viewport FIRST so a failure in any later UI update
       // can never leave the canvas blank
       await this.viewport.loadImage(`/api/images/serve/${fullImg.image_id}`);
 
-      // Pass points and QAs to workflows
+      // Pass points, bboxes, and QAs to workflows
       this.viewport.setPoints(fullImg.points || []);
+      this.viewport.setBBoxes(fullImg.bboxes || []);
       this.pointWorkflow.renderCategoryGrid();
       this.pointWorkflow.renderPointsSummary();
+      this.bboxWorkflow.renderCategoryGrid();
+      this.bboxWorkflow.renderBBoxesSummary();
       this.qaWorkflow.setQAList(fullImg.qa_annotations || []);
 
       // If QA targets active, highlight
       if (this.currentWorkflow === 'qa' && this.qaWorkflow.selectedQAId) {
-        this.viewport.setActiveQATargets(this.qaWorkflow.getTargetsForQA(this.qaWorkflow.selectedQAId));
+        this.viewport.setActiveQATargets(
+          this.qaWorkflow.getTargetsForQA(this.qaWorkflow.selectedQAId),
+          this.qaWorkflow.getBBoxTargetsForQA(this.qaWorkflow.selectedQAId)
+        );
       }
 
       // Bring the active card into view when navigating with A / D
@@ -1074,7 +1211,10 @@ export class App {
       });
       if (res.ok) {
         this.activeImage.density_group = newDensity;
+        if (this.imageDensitySelect) this.imageDensitySelect.value = newDensity;
+        if (this.bboxDensitySelect) this.bboxDensitySelect.value = newDensity;
         this.pointWorkflow.renderCategoryGrid();
+        this.bboxWorkflow.renderCategoryGrid();
         this.loadImages();
         this.showToast(`Density group set to ${newDensity}`, 'info');
       }
@@ -1086,20 +1226,22 @@ export class App {
   updateActiveImageBadgeCounts() {
     if (!this.activeImage) return;
     const ptsCount = this.viewport.points.length;
+    const bbsCount = this.viewport.bboxes.length;
     const qaCount = this.qaWorkflow.qaList.length;
 
     const ptEl = document.getElementById(`card-pts-${this.activeImage.image_id}`);
+    const bbEl = document.getElementById(`card-bbs-${this.activeImage.image_id}`);
     const qaEl = document.getElementById(`card-qa-${this.activeImage.image_id}`);
     if (ptEl) ptEl.textContent = `📍 ${ptsCount}`;
+    if (bbEl) bbEl.textContent = `📦 ${bbsCount}`;
     if (qaEl) qaEl.textContent = `💬 ${qaCount}`;
 
-    // Status badge follows the active workflow (auto-derived qa_status can
-    // flip to completed when the first Q&A pair is created)
+    // Status badge follows the active workflow
     const stEl = document.getElementById(`card-status-${this.activeImage.image_id}`);
     if (stEl) {
       const badgeStatus = this.currentWorkflow === 'qa'
         ? (this.activeImage.qa_status || 'todo')
-        : this.activeImage.status;
+        : (this.currentWorkflow === 'bbox' ? (this.activeImage.bbox_status || 'todo') : this.activeImage.status);
       stEl.className = `status-badge status-${badgeStatus}`;
       stEl.textContent = badgeStatus.replace('_', ' ');
     }
@@ -1146,7 +1288,7 @@ export class App {
 
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
-    const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
+    const icon = type === 'success' ? '✅' : (type === 'error' ? '❌' : (type === 'warning' ? '⚠️' : 'ℹ️'));
     toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
     container.appendChild(toast);
 

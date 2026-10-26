@@ -72,6 +72,18 @@ export class QAWorkflow {
       }
       if (origPointClick) origPointClick(pt, e);
     };
+
+    // When BBox is clicked in QA mode
+    const origBBoxClick = this.viewport.onBBoxClick;
+    this.viewport.onBBoxClick = (bb, e) => {
+      if (this.app.currentWorkflow === 'qa') {
+        if (bb && this.editingQA && this.isSelectingTargets) {
+          this.toggleTargetBBox(bb.bbox_id);
+          return;
+        }
+      }
+      if (origBBoxClick) origBBoxClick(bb, e);
+    };
   }
 
   // Per-image state isolation: called when the active image changes.
@@ -80,7 +92,7 @@ export class QAWorkflow {
     this.isSelectingTargets = false;
     this.selectedQAId = null;
     if (this.qaEditorCard) this.qaEditorCard.style.display = 'none';
-    this.viewport.setActiveQATargets([]);
+    this.viewport.setActiveQATargets([], []);
   }
 
   setQAList(list) {
@@ -124,12 +136,21 @@ export class QAWorkflow {
       card.className = `qa-card ${this.selectedQAId === qa.qa_id ? 'selected-qa' : ''}`;
       card.id = `qa-card-${qa.qa_id}`;
 
-      const targetCount = qa.target_point_ids ? qa.target_point_ids.length : 0;
-      const targetChipsHtml = (qa.target_point_ids || []).map(id => {
-        const pt = this.viewport.points.find(p => p.point_id === id);
-        const cat = pt ? `(${pt.category})` : '';
-        return `<span class="qa-target-chip">${id} ${cat}</span>`;
-      }).join('');
+      const targetPts = qa.target_point_ids || [];
+      const targetBBoxes = qa.target_bbox_ids || [];
+      const targetCount = targetPts.length + targetBBoxes.length;
+      const targetChipsHtml = [
+        ...targetPts.map(id => {
+          const pt = this.viewport.points.find(p => p.point_id === id);
+          const cat = pt ? `(${pt.category})` : '';
+          return `<span class="qa-target-chip">📍 ${id} ${cat}</span>`;
+        }),
+        ...targetBBoxes.map(id => {
+          const bb = this.viewport.bboxes.find(b => b.bbox_id === id);
+          const cat = bb ? `(${bb.category})` : '';
+          return `<span class="qa-target-chip">📦 ${id} ${cat}</span>`;
+        })
+      ].join('');
 
       card.innerHTML = `
         <div style="display: flex; align-items: center; justify-content: space-between;">
@@ -149,13 +170,16 @@ export class QAWorkflow {
         </div>`}
       `;
 
-      // Highlight target points on hover / click
+      // Highlight target points/bboxes on hover / click
       card.addEventListener('mouseenter', () => {
-        this.viewport.setActiveQATargets(qa.target_point_ids);
+        this.viewport.setActiveQATargets(qa.target_point_ids || [], qa.target_bbox_ids || []);
       });
       card.addEventListener('mouseleave', () => {
         if (this.selectedQAId !== qa.qa_id) {
-          this.viewport.setActiveQATargets(this.selectedQAId ? this.getTargetsForQA(this.selectedQAId) : []);
+          this.viewport.setActiveQATargets(
+            this.selectedQAId ? this.getTargetsForQA(this.selectedQAId) : [],
+            this.selectedQAId ? this.getBBoxTargetsForQA(this.selectedQAId) : []
+          );
         }
       });
       card.addEventListener('click', (e) => {
@@ -188,17 +212,24 @@ export class QAWorkflow {
 
     const qa = this.qaList.find(q => q.qa_id === qaId);
     if (qa) {
-      this.viewport.setActiveQATargets(qa.target_point_ids);
-      // Center on first target point if available
+      this.viewport.setActiveQATargets(qa.target_point_ids || [], qa.target_bbox_ids || []);
+      // Center on first target point or bbox if available
       if (qa.target_point_ids && qa.target_point_ids.length > 0) {
         this.viewport.centerOnPoint(qa.target_point_ids[0]);
+      } else if (qa.target_bbox_ids && qa.target_bbox_ids.length > 0) {
+        this.viewport.centerOnBBox(qa.target_bbox_ids[0]);
       }
     }
   }
 
   getTargetsForQA(qaId) {
     const qa = this.qaList.find(q => q.qa_id === qaId);
-    return qa ? qa.target_point_ids : [];
+    return qa ? (qa.target_point_ids || []) : [];
+  }
+
+  getBBoxTargetsForQA(qaId) {
+    const qa = this.qaList.find(q => q.qa_id === qaId);
+    return qa ? (qa.target_bbox_ids || []) : [];
   }
 
   startNewQA() {
@@ -211,10 +242,14 @@ export class QAWorkflow {
       task_type: 'Visual Search',
       question: '',
       answer: '',
-      target_point_ids: []
+      target_point_ids: [],
+      target_bbox_ids: []
     };
     if (this.viewport.selectedPointId) {
       this.editingQA.target_point_ids.push(this.viewport.selectedPointId);
+    }
+    if (this.viewport.selectedBBoxId) {
+      this.editingQA.target_bbox_ids.push(this.viewport.selectedBBoxId);
     }
     this.openQAEditor("Create New QA Pair");
   }
@@ -229,7 +264,8 @@ export class QAWorkflow {
       task_type: qa.task_type,
       question: qa.question,
       answer: qa.answer,
-      target_point_ids: [...(qa.target_point_ids || [])]
+      target_point_ids: [...(qa.target_point_ids || [])],
+      target_bbox_ids: [...(qa.target_bbox_ids || [])]
     };
     this.openQAEditor(`Edit QA (${qa.qa_id})`);
   }
@@ -245,7 +281,7 @@ export class QAWorkflow {
     this.renderTargetChips();
 
     this.qaEditorCard.style.display = 'block';
-    this.viewport.setActiveQATargets(this.editingQA.target_point_ids);
+    this.viewport.setActiveQATargets(this.editingQA.target_point_ids, this.editingQA.target_bbox_ids);
     this.qaQuestionInput.focus();
   }
 
@@ -253,14 +289,17 @@ export class QAWorkflow {
     this.editingQA = null;
     this.isSelectingTargets = false;
     if (this.qaEditorCard) this.qaEditorCard.style.display = 'none';
-    this.viewport.setActiveQATargets(this.selectedQAId ? this.getTargetsForQA(this.selectedQAId) : []);
+    this.viewport.setActiveQATargets(
+      this.selectedQAId ? this.getTargetsForQA(this.selectedQAId) : [],
+      this.selectedQAId ? this.getBBoxTargetsForQA(this.selectedQAId) : []
+    );
   }
 
   toggleTargetSelectionMode() {
     this.isSelectingTargets = !this.isSelectingTargets;
     this.updateTargetSelectorButton();
     if (this.isSelectingTargets) {
-      this.app.showToast('Click points on canvas to toggle Ground-Truth targets', 'info');
+      this.app.showToast('Click points or bboxes on canvas to toggle Ground-Truth targets', 'info');
     }
   }
 
@@ -268,10 +307,10 @@ export class QAWorkflow {
     if (!this.toggleSelectTargetsBtn) return;
     if (this.isSelectingTargets) {
       this.toggleSelectTargetsBtn.className = 'btn btn-success';
-      this.toggleSelectTargetsBtn.textContent = '🎯 Target Picking Active (Click Point)';
+      this.toggleSelectTargetsBtn.textContent = '🎯 Target Picking Active (Click Point / BBox)';
     } else {
       this.toggleSelectTargetsBtn.className = 'btn';
-      this.toggleSelectTargetsBtn.textContent = '🎯 Enable Point Picker';
+      this.toggleSelectTargetsBtn.textContent = '🎯 Enable Target Picker';
     }
   }
 
@@ -284,31 +323,63 @@ export class QAWorkflow {
       this.editingQA.target_point_ids.push(pointId);
     }
     this.renderTargetChips();
-    this.viewport.setActiveQATargets(this.editingQA.target_point_ids);
+    this.viewport.setActiveQATargets(this.editingQA.target_point_ids, this.editingQA.target_bbox_ids);
     this.app.showToast(`Target point ${pointId} ${idx >= 0 ? 'removed' : 'linked'}`, 'info');
+  }
+
+  toggleTargetBBox(bboxId) {
+    if (!this.editingQA) return;
+    this.editingQA.target_bbox_ids = this.editingQA.target_bbox_ids || [];
+    const idx = this.editingQA.target_bbox_ids.indexOf(bboxId);
+    if (idx >= 0) {
+      this.editingQA.target_bbox_ids.splice(idx, 1);
+    } else {
+      this.editingQA.target_bbox_ids.push(bboxId);
+    }
+    this.renderTargetChips();
+    this.viewport.setActiveQATargets(this.editingQA.target_point_ids, this.editingQA.target_bbox_ids);
+    this.app.showToast(`Target BBox ${bboxId} ${idx >= 0 ? 'removed' : 'linked'}`, 'info');
   }
 
   renderTargetChips() {
     if (!this.qaTargetChipsContainer || !this.editingQA) return;
     this.qaTargetChipsContainer.innerHTML = '';
 
-    if (this.editingQA.target_point_ids.length === 0) {
-      this.qaTargetChipsContainer.innerHTML = `<span style="font-size:0.7rem; color:var(--text-muted);">No points linked. Click points on the image above.</span>`;
+    const pts = this.editingQA.target_point_ids || [];
+    const bbs = this.editingQA.target_bbox_ids || [];
+    if (pts.length === 0 && bbs.length === 0) {
+      this.qaTargetChipsContainer.innerHTML = `<span style="font-size:0.7rem; color:var(--text-muted);">No targets linked. Click points or bboxes on the image above.</span>`;
       return;
     }
 
-    this.editingQA.target_point_ids.forEach(id => {
+    pts.forEach(id => {
       const pt = this.viewport.points.find(p => p.point_id === id);
       const cat = pt ? `(${pt.category})` : '';
       const chip = document.createElement('span');
       chip.className = 'qa-target-chip';
       chip.innerHTML = `
-        ${id} ${cat}
+        📍 ${id} ${cat}
         <span class="remove-chip-btn" title="Remove">&times;</span>
       `;
       chip.querySelector('.remove-chip-btn').addEventListener('click', (e) => {
         e.stopPropagation();
         this.toggleTargetPoint(id);
+      });
+      this.qaTargetChipsContainer.appendChild(chip);
+    });
+
+    bbs.forEach(id => {
+      const bb = this.viewport.bboxes.find(b => b.bbox_id === id);
+      const cat = bb ? `(${bb.category})` : '';
+      const chip = document.createElement('span');
+      chip.className = 'qa-target-chip';
+      chip.innerHTML = `
+        📦 ${id} ${cat}
+        <span class="remove-chip-btn" title="Remove">&times;</span>
+      `;
+      chip.querySelector('.remove-chip-btn').addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.toggleTargetBBox(id);
       });
       this.qaTargetChipsContainer.appendChild(chip);
     });
@@ -334,7 +405,8 @@ export class QAWorkflow {
       task_type: this.qaTaskTypeSelect.value,
       question: qText,
       answer: aText,
-      target_point_ids: this.editingQA.target_point_ids
+      target_point_ids: this.editingQA.target_point_ids || [],
+      target_bbox_ids: this.editingQA.target_bbox_ids || []
     };
 
     try {

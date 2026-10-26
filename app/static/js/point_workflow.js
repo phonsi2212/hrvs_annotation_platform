@@ -44,19 +44,49 @@ export class PointWorkflow {
     this.clearPointsBtn = document.getElementById('toolClearPoints');
 
     if (this.toolAddBtn) {
-      this.toolAddBtn.addEventListener('click', () => this.setTool('add'));
+      this.toolAddBtn.addEventListener('click', () => {
+        if (this.app.currentWorkflow === 'bbox' && this.app.bboxWorkflow) {
+          this.app.bboxWorkflow.setTool('draw');
+        } else {
+          this.setTool('add');
+        }
+      });
     }
     if (this.toolSelectBtn) {
-      this.toolSelectBtn.addEventListener('click', () => this.setTool('select'));
+      this.toolSelectBtn.addEventListener('click', () => {
+        if (this.app.currentWorkflow === 'bbox' && this.app.bboxWorkflow) {
+          this.app.bboxWorkflow.setTool('select');
+        } else {
+          this.setTool('select');
+        }
+      });
     }
     if (this.undoBtn) {
-      this.undoBtn.addEventListener('click', () => this.undo());
+      this.undoBtn.addEventListener('click', () => {
+        if (this.app.currentWorkflow === 'bbox' && this.app.bboxWorkflow) {
+          this.app.bboxWorkflow.undo();
+        } else {
+          this.undo();
+        }
+      });
     }
     if (this.redoBtn) {
-      this.redoBtn.addEventListener('click', () => this.redo());
+      this.redoBtn.addEventListener('click', () => {
+        if (this.app.currentWorkflow === 'bbox' && this.app.bboxWorkflow) {
+          this.app.bboxWorkflow.redo();
+        } else {
+          this.redo();
+        }
+      });
     }
     if (this.clearPointsBtn) {
-      this.clearPointsBtn.addEventListener('click', () => this.confirmClearAllPoints());
+      this.clearPointsBtn.addEventListener('click', () => {
+        if (this.app.currentWorkflow === 'bbox' && this.app.bboxWorkflow) {
+          this.app.bboxWorkflow.clearAllBBoxes();
+        } else {
+          this.confirmClearAllPoints();
+        }
+      });
     }
 
     // Inspector change listeners
@@ -266,6 +296,9 @@ export class PointWorkflow {
       const res = await fetch('/api/categories');
       this.categories = await res.json();
       this.renderCategoryGrid();
+      if (this.app.bboxWorkflow) {
+        this.app.bboxWorkflow.renderCategoryGrid();
+      }
     } catch (err) {
       console.error('Failed to load categories:', err);
     }

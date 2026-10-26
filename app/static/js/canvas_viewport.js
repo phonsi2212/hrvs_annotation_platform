@@ -67,7 +67,18 @@ export class CanvasViewport {
     this.selectedPointId = null;
     this.hoveredPointId = null;
     this.activeQATargetIds = new Set();
-    this.workflowMode = 'point'; // 'point' | 'qa'
+
+    // Bounding Boxes data & state
+    this.bboxes = [];
+    this.selectedBBoxId = null;
+    this.hoveredBBoxId = null;
+    this.activeQATargetBBoxIds = new Set();
+    this.bboxesLocked = false;
+    this.bboxTool = 'draw'; // 'draw' | 'select'
+    this.drawingBBox = null;
+    this.draggingBBox = null;
+
+    this.workflowMode = 'point'; // 'point' | 'bbox' | 'qa'
     // True while the active image's status is 'completed': points become
     // read-only (select/inspect allowed, dragging and edits blocked).
     this.pointsLocked = false;
@@ -78,6 +89,12 @@ export class CanvasViewport {
     this.onPointHover = null;
     this.onPointDrag = null;
     this.onPointDragEnd = null;
+    this.onBBoxCreate = null;
+    this.onBBoxClick = null;
+    this.onBBoxHover = null;
+    this.onBBoxChange = null;
+    this.onBBoxChangeEnd = null;
+    this.getActiveBBoxDraftStyle = null;
     this.onCanvasClick = null;
 
     // Drag point state
@@ -243,6 +260,29 @@ export class CanvasViewport {
         return;
       }
 
+      // Drawing a new Bounding Box
+      if (this.drawingBBox) {
+        const pos = this.screenToImage(this.mouseX, this.mouseY);
+        this.drawingBBox.currX = Math.round(pos.xClamped * 10) / 10;
+        this.drawingBBox.currY = Math.round(pos.yClamped * 10) / 10;
+        if (Math.hypot(this.mouseX - this.drawingBBox.startScreenX, this.mouseY - this.drawingBBox.startScreenY) > 4) {
+          this.drawingBBox.moved = true;
+        }
+        this.requestOverlayRender();
+        return;
+      }
+
+      // Moving or Resizing an existing Bounding Box
+      if (this.draggingBBox) {
+        const pos = this.screenToImage(this.mouseX, this.mouseY);
+        this._applyBBoxDrag(pos.xClamped, pos.yClamped);
+        if (this.onBBoxChange) {
+          this.onBBoxChange(this.draggingBBox.bbox);
+        }
+        this.requestOverlayRender();
+        return;
+      }
+
       // Dragging point (image layer is untouched -> overlay-only render)
       if (this.draggingPoint) {
         const pos = this.screenToImage(this.mouseX, this.mouseY);
@@ -259,21 +299,52 @@ export class CanvasViewport {
         return;
       }
 
-      // Check hover point
-      const pt = this.findPointNearScreen(this.mouseX, this.mouseY, this.screenRadius + 4);
-      if (pt !== this.hoveredPointId) {
-        this.hoveredPointId = pt ? pt.point_id : null;
-        if (this.onPointHover) this.onPointHover(pt);
-        this.requestOverlayRender();
-      }
-
-      // Cursor affordance
-      if (this.isSpacePressed) {
-        this.canvas.style.cursor = 'grab';
-      } else if (pt) {
-        this.canvas.style.cursor = (this.workflowMode === 'point' && !this.pointsLocked) ? 'move' : 'pointer';
+      if (this.workflowMode === 'bbox') {
+        const handleHit = (!this.bboxesLocked && this.selectedBBoxId)
+          ? this.findBBoxHandleAtScreen(this.mouseX, this.mouseY)
+          : null;
+        const bb = this.findBBoxAtScreen(this.mouseX, this.mouseY, this.bboxTool === 'draw');
+        const nextHoverId = bb ? bb.bbox_id : null;
+        if (nextHoverId !== this.hoveredBBoxId) {
+          this.hoveredBBoxId = nextHoverId;
+          if (this.onBBoxHover) this.onBBoxHover(bb);
+          this.requestOverlayRender();
+        }
+        if (this.isSpacePressed) {
+          this.canvas.style.cursor = 'grab';
+        } else if (handleHit) {
+          this.canvas.style.cursor = this._cursorForHandle(handleHit.handle);
+        } else if (bb && (this.bboxTool === 'select' || bb._borderHit)) {
+          this.canvas.style.cursor = this.bboxesLocked ? 'pointer' : 'move';
+        } else {
+          this.canvas.style.cursor = 'crosshair';
+        }
       } else {
-        this.canvas.style.cursor = 'crosshair';
+        // Check hover point (and hover bbox in QA mode)
+        const pt = this.findPointNearScreen(this.mouseX, this.mouseY, this.screenRadius + 4);
+        if ((pt ? pt.point_id : null) !== this.hoveredPointId) {
+          this.hoveredPointId = pt ? pt.point_id : null;
+          if (this.onPointHover) this.onPointHover(pt);
+          this.requestOverlayRender();
+        }
+        if (this.workflowMode === 'qa') {
+          const bb = !pt ? this.findBBoxAtScreen(this.mouseX, this.mouseY, false) : null;
+          if ((bb ? bb.bbox_id : null) !== this.hoveredBBoxId) {
+            this.hoveredBBoxId = bb ? bb.bbox_id : null;
+            this.requestOverlayRender();
+          }
+        }
+
+        // Cursor affordance
+        if (this.isSpacePressed) {
+          this.canvas.style.cursor = 'grab';
+        } else if (pt) {
+          this.canvas.style.cursor = (this.workflowMode === 'point' && !this.pointsLocked) ? 'move' : 'pointer';
+        } else if (this.workflowMode === 'qa' && this.hoveredBBoxId) {
+          this.canvas.style.cursor = 'pointer';
+        } else {
+          this.canvas.style.cursor = 'crosshair';
+        }
       }
 
       // Cursor update callback
@@ -302,6 +373,10 @@ export class CanvasViewport {
         this.hoveredPointId = null;
         if (this.onPointHover) this.onPointHover(null);
       }
+      if (this.hoveredBBoxId) {
+        this.hoveredBBoxId = null;
+        if (this.onBBoxHover) this.onBBoxHover(null);
+      }
       this.requestOverlayRender();
     });
 
@@ -321,7 +396,85 @@ export class CanvasViewport {
       }
 
       if (e.button === 0) { // Left click
+        if (this.workflowMode === 'bbox') {
+          // 1. Check resize handles on selected bbox
+          if (!this.bboxesLocked && this.selectedBBoxId) {
+            const handleHit = this.findBBoxHandleAtScreen(this.mouseX, this.mouseY);
+            if (handleHit) {
+              const pos = this.screenToImage(this.mouseX, this.mouseY);
+              this.draggingBBox = {
+                bbox: handleHit.bbox,
+                mode: handleHit.handle,
+                startImgX: pos.xClamped,
+                startImgY: pos.yClamped,
+                origRect: {
+                  x: handleHit.bbox.x,
+                  y: handleHit.bbox.y,
+                  width: handleHit.bbox.width,
+                  height: handleHit.bbox.height
+                }
+              };
+              this.requestOverlayRender();
+              return;
+            }
+          }
+
+          // 2. Check existing bbox hit (in 'select' mode: interior or border; in 'draw' mode: border/label hit)
+          const hitBBox = this.findBBoxAtScreen(this.mouseX, this.mouseY, this.bboxTool === 'draw');
+          if (hitBBox && (this.bboxTool === 'select' || hitBBox._borderHit || this.bboxesLocked)) {
+            this.selectedBBoxId = hitBBox.bbox_id;
+            if (!this.bboxesLocked) {
+              const pos = this.screenToImage(this.mouseX, this.mouseY);
+              this.draggingBBox = {
+                bbox: hitBBox,
+                mode: 'move',
+                startImgX: pos.xClamped,
+                startImgY: pos.yClamped,
+                origRect: {
+                  x: hitBBox.x,
+                  y: hitBBox.y,
+                  width: hitBBox.width,
+                  height: hitBBox.height
+                }
+              };
+            }
+            if (this.onBBoxClick) this.onBBoxClick(hitBBox, e);
+            this.requestOverlayRender();
+            return;
+          }
+
+          // 3. In 'draw' mode (and unlocked), start drawing a new BBox on drag
+          if (this.bboxTool === 'draw' && !this.bboxesLocked && this.imageLoaded) {
+            const pos = this.screenToImage(this.mouseX, this.mouseY);
+            const style = this.getActiveBBoxDraftStyle ? this.getActiveBBoxDraftStyle() : { color: '#EF4444', category: 'object' };
+            this.drawingBBox = {
+              startX: Math.round(pos.xClamped * 10) / 10,
+              startY: Math.round(pos.yClamped * 10) / 10,
+              currX: Math.round(pos.xClamped * 10) / 10,
+              currY: Math.round(pos.yClamped * 10) / 10,
+              startScreenX: this.mouseX,
+              startScreenY: this.mouseY,
+              moved: false,
+              color: style.color || '#EF4444',
+              category: style.category || 'object'
+            };
+            this.requestOverlayRender();
+            return;
+          }
+
+          // 4. Otherwise ('select' mode on empty space, or locked): pan on drag, or select/deselect on click
+          this.isPanning = true;
+          this.panStartX = this.mouseX;
+          this.panStartY = this.mouseY;
+          this._pendingClickPan = { startX: this.mouseX, startY: this.mouseY, moved: false };
+          this.requestOverlayRender();
+          return;
+        }
+
         const hitPoint = this.findPointNearScreen(this.mouseX, this.mouseY, this.screenRadius + 4);
+        const hitBBoxInQA = (!hitPoint && this.workflowMode === 'qa')
+          ? this.findBBoxAtScreen(this.mouseX, this.mouseY, false)
+          : null;
 
         if (hitPoint) {
           if (this.workflowMode === 'point') {
@@ -336,6 +489,8 @@ export class CanvasViewport {
             // QA Mode: Lock point edits. Clicking selects/toggles target point
             if (this.onPointClick) this.onPointClick(hitPoint, e);
           }
+        } else if (hitBBoxInQA) {
+          if (this.onBBoxClick) this.onBBoxClick(hitBBoxInQA, e);
         } else {
           // Empty space: press-and-hold pans the view. If released without
           // exceeding LEFT_DRAG_THRESHOLD_PX, it is treated as a click
@@ -351,6 +506,60 @@ export class CanvasViewport {
 
     // Mouse Up
     window.addEventListener('mouseup', (e) => {
+      if (this.drawingBBox) {
+        const draft = this.drawingBBox;
+        this.drawingBBox = null;
+        const x1 = Math.min(draft.startX, draft.currX);
+        const y1 = Math.min(draft.startY, draft.currY);
+        const w = Math.abs(draft.currX - draft.startX);
+        const h = Math.abs(draft.currY - draft.startY);
+        const screenW = w * this.scale;
+        const screenH = h * this.scale;
+
+        if (draft.moved && screenW >= 4 && screenH >= 4 && w >= 1 && h >= 1) {
+          if (this.onBBoxCreate) {
+            this.onBBoxCreate({
+              x: Math.round(x1 * 10) / 10,
+              y: Math.round(y1 * 10) / 10,
+              width: Math.round(w * 10) / 10,
+              height: Math.round(h * 10) / 10
+            });
+          }
+        } else {
+          // Short click without dragging: select bbox under cursor or deselect
+          const hitAny = this.findBBoxAtScreen(draft.startScreenX, draft.startScreenY, false);
+          if (hitAny) {
+            this.selectedBBoxId = hitAny.bbox_id;
+            if (this.onBBoxClick) this.onBBoxClick(hitAny, e);
+          } else {
+            this.selectedBBoxId = null;
+            if (this.onBBoxClick) this.onBBoxClick(null, e);
+          }
+        }
+        this.requestOverlayRender();
+        return;
+      }
+
+      if (this.draggingBBox) {
+        const dragInfo = this.draggingBBox;
+        this.draggingBBox = null;
+        const bb = dragInfo.bbox;
+        const orig = dragInfo.origRect;
+        if (
+          bb.x !== orig.x ||
+          bb.y !== orig.y ||
+          bb.width !== orig.width ||
+          bb.height !== orig.height
+        ) {
+          if (this.onBBoxChangeEnd) {
+            this.onBBoxChangeEnd(bb, orig);
+          }
+        }
+        this.renderMinimapDots();
+        this.requestOverlayRender();
+        return;
+      }
+
       if (this.isPanning) {
         const pending = this._pendingClickPan;
         this._pendingClickPan = null;
@@ -359,13 +568,19 @@ export class CanvasViewport {
 
         // A left press on empty space that never turned into a drag is a
         // click: add point (Add tool), deselect (Select tool), etc.
-        if (pending && !pending.moved && this.onCanvasClick) {
+        if (pending && !pending.moved) {
           const rect = this.canvas.getBoundingClientRect();
           const mx = e.clientX - rect.left;
           const my = e.clientY - rect.top;
           if (mx >= 0 && my >= 0 && mx <= rect.width && my <= rect.height) {
-            const coords = this.screenToImage(mx, my);
-            this.onCanvasClick(coords, e);
+            if (this.workflowMode === 'bbox') {
+              this.selectedBBoxId = null;
+              if (this.onBBoxClick) this.onBBoxClick(null, e);
+              this.requestOverlayRender();
+            } else if (this.onCanvasClick) {
+              const coords = this.screenToImage(mx, my);
+              this.onCanvasClick(coords, e);
+            }
           }
         }
       }
@@ -384,6 +599,14 @@ export class CanvasViewport {
       const rect = this.canvas.getBoundingClientRect();
       const mx = e.clientX - rect.left;
       const my = e.clientY - rect.top;
+      if (this.workflowMode === 'bbox') {
+        const bb = this.findBBoxAtScreen(mx, my, false);
+        if (bb) {
+          const evt = new CustomEvent('bbox-delete-request', { detail: { bbox_id: bb.bbox_id } });
+          window.dispatchEvent(evt);
+        }
+        return;
+      }
       const pt = this.findPointNearScreen(mx, my, this.screenRadius + 5);
       if (pt && this.workflowMode === 'point') {
         // Quick delete on right click
@@ -481,8 +704,23 @@ export class CanvasViewport {
     this.requestOverlayRender();
   }
 
-  setActiveQATargets(targetIds) {
+  setBBoxes(bboxesList) {
+    this.bboxes = bboxesList || [];
+    this.hoveredBBoxId = null;
+    this.renderMinimapDots();
+    this.requestOverlayRender();
+  }
+
+  setSelectedBBox(bboxId) {
+    this.selectedBBoxId = bboxId;
+    this.requestOverlayRender();
+  }
+
+  setActiveQATargets(targetIds, targetBBoxIds) {
     this.activeQATargetIds = new Set(targetIds || []);
+    if (targetBBoxIds !== undefined) {
+      this.activeQATargetBBoxIds = new Set(targetBBoxIds || []);
+    }
     this.renderMinimapDots();
     this.requestOverlayRender();
   }
@@ -494,6 +732,163 @@ export class CanvasViewport {
     this.panY = this.canvas.height / 2 - pt.y * this.scale;
     this.selectedPointId = pointId;
     this.requestRender();
+  }
+
+  centerOnBBox(bboxId) {
+    const bb = this.bboxes.find(b => b.bbox_id === bboxId);
+    if (!bb || !this.imageLoaded) return;
+    const cx = bb.x + bb.width / 2;
+    const cy = bb.y + bb.height / 2;
+    this.panX = this.canvas.width / 2 - cx * this.scale;
+    this.panY = this.canvas.height / 2 - cy * this.scale;
+    this.selectedBBoxId = bboxId;
+    this.requestRender();
+  }
+
+  // ---- Bounding Box Hit-Testing & Geometry Helpers ------------------------
+
+  _getBBoxScreenRect(bb) {
+    const sc = this.scale;
+    const x = bb.x * sc + this.panX;
+    const y = bb.y * sc + this.panY;
+    const w = bb.width * sc;
+    const h = bb.height * sc;
+    return { x, y, w, h, x2: x + w, y2: y + h };
+  }
+
+  _getBBoxHandlesScreen(bb) {
+    const r = this._getBBoxScreenRect(bb);
+    const mx = r.x + r.w / 2;
+    const my = r.y + r.h / 2;
+    return [
+      { handle: 'nw', x: r.x,  y: r.y },
+      { handle: 'n',  x: mx,   y: r.y },
+      { handle: 'ne', x: r.x2, y: r.y },
+      { handle: 'e',  x: r.x2, y: my },
+      { handle: 'se', x: r.x2, y: r.y2 },
+      { handle: 's',  x: mx,   y: r.y2 },
+      { handle: 'sw', x: r.x,  y: r.y2 },
+      { handle: 'w',  x: r.x,  y: my }
+    ];
+  }
+
+  findBBoxHandleAtScreen(screenX, screenY, maxDistPx = 7) {
+    if (!this.selectedBBoxId) return null;
+    const bb = this.bboxes.find(b => b.bbox_id === this.selectedBBoxId);
+    if (!bb) return null;
+    const handles = this._getBBoxHandlesScreen(bb);
+    for (const h of handles) {
+      if (Math.abs(screenX - h.x) <= maxDistPx && Math.abs(screenY - h.y) <= maxDistPx) {
+        return { bbox: bb, handle: h.handle };
+      }
+    }
+    return null;
+  }
+
+  findBBoxAtScreen(screenX, screenY, borderPriorityOnly = false) {
+    if (this.hidePoints || !this.bboxes.length) return null;
+    const borderTol = 6;
+    const borderHits = [];
+    const interiorHits = [];
+
+    for (const bb of this.bboxes) {
+      const r = this._getBBoxScreenRect(bb);
+      const inOuter = (
+        screenX >= r.x - borderTol &&
+        screenX <= r.x2 + borderTol &&
+        screenY >= r.y - borderTol &&
+        screenY <= r.y2 + borderTol
+      );
+      if (!inOuter) continue;
+
+      const nearLeft   = Math.abs(screenX - r.x) <= borderTol;
+      const nearRight  = Math.abs(screenX - r.x2) <= borderTol;
+      const nearTop    = Math.abs(screenY - r.y) <= borderTol;
+      const nearBottom = Math.abs(screenY - r.y2) <= borderTol;
+      const nearLabel  = (screenX >= r.x && screenX <= r.x + Math.min(140, Math.max(48, r.w)) && screenY >= r.y - 18 && screenY <= r.y + 4);
+
+      if (nearLeft || nearRight || nearTop || nearBottom || nearLabel) {
+        borderHits.push(bb);
+      } else if (screenX >= r.x && screenX <= r.x2 && screenY >= r.y && screenY <= r.y2) {
+        interiorHits.push(bb);
+      }
+    }
+
+    // Prefer smaller boxes when overlapping
+    const byAreaAsc = (a, b) => (a.width * a.height) - (b.width * b.height);
+    if (borderHits.length > 0) {
+      borderHits.sort(byAreaAsc);
+      const hit = borderHits[0];
+      hit._borderHit = true;
+      return hit;
+    }
+    if (!borderPriorityOnly && interiorHits.length > 0) {
+      interiorHits.sort(byAreaAsc);
+      const hit = interiorHits[0];
+      hit._borderHit = false;
+      return hit;
+    }
+    return null;
+  }
+
+  _cursorForHandle(handle) {
+    switch (handle) {
+      case 'nw':
+      case 'se':
+        return 'nwse-resize';
+      case 'ne':
+      case 'sw':
+        return 'nesw-resize';
+      case 'n':
+      case 's':
+        return 'ns-resize';
+      case 'e':
+      case 'w':
+        return 'ew-resize';
+      default:
+        return 'move';
+    }
+  }
+
+  _applyBBoxDrag(currImgX, currImgY) {
+    if (!this.draggingBBox) return;
+    const { bbox, mode, startImgX, startImgY, origRect } = this.draggingBBox;
+    const dx = currImgX - startImgX;
+    const dy = currImgY - startImgY;
+    const W = this.naturalWidth || 1;
+    const H = this.naturalHeight || 1;
+
+    if (mode === 'move') {
+      let nx = origRect.x + dx;
+      let ny = origRect.y + dy;
+      nx = Math.max(0, Math.min(W - origRect.width, nx));
+      ny = Math.max(0, Math.min(H - origRect.height, ny));
+      bbox.x = Math.round(nx * 10) / 10;
+      bbox.y = Math.round(ny * 10) / 10;
+    } else {
+      let x1 = origRect.x;
+      let y1 = origRect.y;
+      let x2 = origRect.x + origRect.width;
+      let y2 = origRect.y + origRect.height;
+
+      if (mode.includes('w')) x1 = Math.max(0, Math.min(x2 - 1, x1 + dx));
+      if (mode.includes('e')) x2 = Math.min(W, Math.max(x1 + 1, x2 + dx));
+      if (mode.includes('n')) y1 = Math.max(0, Math.min(y2 - 1, y1 + dy));
+      if (mode.includes('s')) y2 = Math.min(H, Math.max(y1 + 1, y2 + dy));
+
+      bbox.x = Math.round(x1 * 10) / 10;
+      bbox.y = Math.round(y1 * 10) / 10;
+      bbox.width = Math.round((x2 - x1) * 10) / 10;
+      bbox.height = Math.round((y2 - y1) * 10) / 10;
+    }
+
+    if (this.naturalWidth > 0 && this.naturalHeight > 0) {
+      bbox.x_norm = +(bbox.x / this.naturalWidth).toFixed(6);
+      bbox.y_norm = +(bbox.y / this.naturalHeight).toFixed(6);
+      bbox.width_norm = +(bbox.width / this.naturalWidth).toFixed(6);
+      bbox.height_norm = +(bbox.height / this.naturalHeight).toFixed(6);
+      bbox.area_ratio = +(bbox.width_norm * bbox.height_norm).toFixed(8);
+    }
   }
 
   // ---- Render scheduling -------------------------------------------------
@@ -588,10 +983,255 @@ export class CanvasViewport {
       ctx.restore();
     }
 
-    // Constant Screen-Size Markers (if not hidden)
+    // Constant Screen-Size Markers & Bounding Boxes (if not hidden)
     if (!this.hidePoints) {
+      this.renderBBoxes(ctx);
       this.renderPoints(ctx);
     }
+  }
+
+  _renderTopCenterBanner(ctx, isLarge, pctStr, wPx, hPx) {
+    const cw = this.canvas.width;
+    const bannerH = 34;
+    const bannerW = isLarge ? 590 : 430;
+    const bx = Math.round((cw - bannerW) / 2);
+    const by = 20;
+
+    ctx.save();
+    // Drop shadow
+    ctx.shadowColor = isLarge ? "rgba(220, 38, 38, 0.85)" : "rgba(16, 185, 129, 0.5)";
+    ctx.shadowBlur = isLarge ? 18 : 8;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 3;
+
+    // Background pill
+    ctx.fillStyle = isLarge ? "rgba(220, 38, 38, 0.96)" : "rgba(5, 150, 105, 0.92)";
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(bx, by, bannerW, bannerH, 8);
+    } else {
+      ctx.rect(bx, by, bannerW, bannerH);
+    }
+    ctx.fill();
+
+    // Border
+    ctx.strokeStyle = isLarge ? "#fecaca" : "#a7f3d0";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Text label
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 13px 'Segoe UI', system-ui, -apple-system, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    const text = isLarge
+      ? `⚠️ CẢNH BÁO: BBox = ${pctStr}% (≥ 0.1%) — VƯỢT TIÊU CHUẨN SMALL OBJECT!`
+      : `✓ Chuẩn Small Object (< 0.1%): ${pctStr}% (${wPx}×${hPx}px)`;
+
+    ctx.fillText(text, bx + bannerW / 2, by + bannerH / 2);
+    ctx.restore();
+  }
+
+  renderBBoxes(ctx) {
+    if (!this.bboxes.length && !this.drawingBBox) return;
+    const cw = this.canvas.width;
+    const ch = this.canvas.height;
+    const isBBoxMode = this.workflowMode === 'bbox';
+    const isQAMode = this.workflowMode === 'qa';
+
+    ctx.save();
+    ctx.font = "600 10px JetBrains Mono, monospace";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "middle";
+
+    for (const bb of this.bboxes) {
+      const r = this._getBBoxScreenRect(bb);
+      if (r.x2 < -20 || r.x > cw + 20 || r.y2 < -20 || r.y > ch + 20) continue;
+
+      const isSelected = bb.bbox_id === this.selectedBBoxId;
+      const isHovered = bb.bbox_id === this.hoveredBBoxId;
+      const isQATarget = this.activeQATargetBBoxIds.has(bb.bbox_id);
+      const isDraggingThis = this.draggingBBox && this.draggingBBox.bbox === bb;
+      const baseColor = bb.color || "#EF4444";
+
+      const totalArea = (this.naturalWidth || 1) * (this.naturalHeight || 1);
+      const areaPct = ((bb.area_ratio ?? ((bb.width * bb.height) / totalArea)) * 100);
+      const isSmall = areaPct < 0.1;
+      const pctStr = areaPct < 0.01 ? areaPct.toFixed(4) : areaPct.toFixed(3);
+
+      if (isDraggingThis) {
+        const isLarge = !isSmall;
+        if (isLarge) {
+          ctx.fillStyle = "rgba(239, 68, 68, 0.28)";
+          ctx.fillRect(r.x, r.y, r.w, r.h);
+
+          ctx.save();
+          ctx.shadowColor = "rgba(239, 68, 68, 0.95)";
+          ctx.shadowBlur = 14;
+          ctx.strokeStyle = "#ef4444";
+          ctx.lineWidth = 3;
+          ctx.setLineDash([8, 4]);
+          ctx.strokeRect(r.x, r.y, r.w, r.h);
+          ctx.restore();
+        } else {
+          ctx.fillStyle = "rgba(16, 185, 129, 0.18)";
+          ctx.fillRect(r.x, r.y, r.w, r.h);
+
+          ctx.strokeStyle = "#10b981";
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([5, 4]);
+          ctx.strokeRect(r.x, r.y, r.w, r.h);
+        }
+        ctx.setLineDash([]);
+
+        // Dragging badge
+        const dragLabel = isLarge
+          ? `⚠️ VƯỢT 0.1%: ${pctStr}% (${Math.round(bb.width)}×${Math.round(bb.height)}px) — LARGE OBJECT`
+          : `✓ Small: ${pctStr}% (${Math.round(bb.width)}×${Math.round(bb.height)}px)`;
+        ctx.font = "bold 11px JetBrains Mono, monospace";
+        const tw = ctx.measureText(dragLabel).width + 16;
+        const by = r.y >= 24 ? r.y - 24 : r.y;
+        ctx.fillStyle = isLarge ? "#dc2626" : "#059669";
+        ctx.fillRect(r.x, by, tw, 22);
+        ctx.strokeStyle = isLarge ? "#fecaca" : "#a7f3d0";
+        ctx.lineWidth = 1.5;
+        ctx.strokeRect(r.x, by, tw, 22);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(dragLabel, r.x + 8, by + 11);
+        ctx.font = "600 10px JetBrains Mono, monospace";
+
+        this._renderTopCenterBanner(ctx, isLarge, pctStr, Math.round(bb.width), Math.round(bb.height));
+      } else {
+        // Interior fill for selected / hovered / QA target
+        if (isQATarget) {
+          ctx.fillStyle = "rgba(16, 185, 129, 0.22)";
+          ctx.fillRect(r.x, r.y, r.w, r.h);
+        } else if (isSelected) {
+          ctx.fillStyle = !isSmall ? "rgba(239, 68, 68, 0.20)" : "rgba(251, 191, 36, 0.14)";
+          ctx.fillRect(r.x, r.y, r.w, r.h);
+        } else if (isHovered && (isBBoxMode || isQAMode)) {
+          ctx.fillStyle = "rgba(255, 255, 255, 0.10)";
+          ctx.fillRect(r.x, r.y, r.w, r.h);
+        }
+
+        // Border stroke
+        ctx.beginPath();
+        if (!isBBoxMode && !isQAMode && !isSelected) {
+          ctx.setLineDash([4, 3]);
+          ctx.globalAlpha = 0.65;
+        } else {
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 1.0;
+        }
+        ctx.strokeStyle = isQATarget ? "#10b981" : (isSelected ? (!isSmall ? "#ef4444" : "#fbbf24") : (isHovered ? "#ffffff" : baseColor));
+        ctx.lineWidth = (isSelected || isQATarget) ? 2.5 : (isHovered ? 2.0 : 1.75);
+        ctx.strokeRect(r.x, r.y, r.w, r.h);
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1.0;
+
+        // Label badge at top-left (in bbox/qa mode, or when selected/hovered)
+        if (isBBoxMode || isSelected || isHovered || isQATarget) {
+          let labelText;
+          if (isSelected || isHovered) {
+            labelText = !isSmall
+              ? `⚠️ ${bb.bbox_id} · ${bb.category} (${pctStr}% ≥ 0.1% LARGE)`
+              : `${bb.bbox_id} · ${bb.category} (${pctStr}% · S)`;
+          } else {
+            labelText = !isSmall
+              ? `⚠️ ${bb.bbox_id} · ${bb.category}`
+              : `${bb.bbox_id} · ${bb.category}`;
+          }
+
+          const padX = 6;
+          const badgeH = 18;
+          ctx.font = !isSmall && isSelected ? "bold 10px JetBrains Mono, monospace" : "600 10px JetBrains Mono, monospace";
+          const textW = ctx.measureText(labelText).width;
+          const badgeW = textW + padX * 2;
+          const badgeY = r.y >= badgeH + 2 ? r.y - badgeH : r.y;
+
+          ctx.fillStyle = isQATarget ? "#059669" : (isSelected ? (!isSmall ? "#dc2626" : "#d97706") : (!isSmall ? "#b91c1c" : baseColor));
+          ctx.fillRect(r.x, badgeY, badgeW, badgeH);
+          ctx.fillStyle = "#ffffff";
+          ctx.fillText(labelText, r.x + padX, badgeY + badgeH / 2);
+          ctx.font = "600 10px JetBrains Mono, monospace";
+        }
+      }
+
+      // Resize handles when selected in BBox mode & unlocked
+      if (isSelected && isBBoxMode && !this.bboxesLocked) {
+        const handles = this._getBBoxHandlesScreen(bb);
+        const hs = 7;
+        for (const h of handles) {
+          ctx.fillStyle = !isSmall ? "#fee2e2" : "#ffffff";
+          ctx.strokeStyle = !isSmall ? "#dc2626" : "#d97706";
+          ctx.lineWidth = 1.5;
+          ctx.fillRect(h.x - hs / 2, h.y - hs / 2, hs, hs);
+          ctx.strokeRect(h.x - hs / 2, h.y - hs / 2, hs, hs);
+        }
+      }
+    }
+
+    // Active draft box while click-dragging to create a new BBox
+    if (this.drawingBBox) {
+      const d = this.drawingBBox;
+      const x1 = Math.min(d.startX, d.currX);
+      const y1 = Math.min(d.startY, d.currY);
+      const w = Math.abs(d.currX - d.startX);
+      const h = Math.abs(d.currY - d.startY);
+      const s1 = this.imageToScreen(x1, y1);
+      const sw = w * this.scale;
+      const sh = h * this.scale;
+
+      const totalArea = (this.naturalWidth || 1) * (this.naturalHeight || 1);
+      const areaPct = ((w * h) / totalArea) * 100;
+      const isLarge = areaPct >= 0.1;
+      const pctStr = areaPct < 0.01 ? areaPct.toFixed(4) : areaPct.toFixed(3);
+
+      if (isLarge) {
+        ctx.fillStyle = "rgba(239, 68, 68, 0.28)";
+        ctx.fillRect(s1.x, s1.y, sw, sh);
+
+        ctx.save();
+        ctx.shadowColor = "rgba(239, 68, 68, 0.95)";
+        ctx.shadowBlur = 14;
+        ctx.strokeStyle = "#ef4444";
+        ctx.lineWidth = 3;
+        ctx.setLineDash([8, 4]);
+        ctx.strokeRect(s1.x, s1.y, sw, sh);
+        ctx.restore();
+      } else {
+        ctx.fillStyle = "rgba(16, 185, 129, 0.18)";
+        ctx.fillRect(s1.x, s1.y, sw, sh);
+
+        ctx.strokeStyle = "#10b981";
+        ctx.lineWidth = 2.25;
+        ctx.setLineDash([5, 4]);
+        ctx.strokeRect(s1.x, s1.y, sw, sh);
+      }
+      ctx.setLineDash([]);
+
+      const draftLabel = isLarge
+        ? `⚠️ VƯỢT 0.1%: ${pctStr}% (${Math.round(w)}×${Math.round(h)}px) — LARGE OBJECT`
+        : `✓ Small Object: ${pctStr}% (${Math.round(w)}×${Math.round(h)}px)`;
+
+      ctx.font = "bold 11px JetBrains Mono, monospace";
+      const tw = ctx.measureText(draftLabel).width + 16;
+      const by = s1.y >= 24 ? s1.y - 24 : s1.y;
+
+      ctx.fillStyle = isLarge ? "#dc2626" : "#059669";
+      ctx.fillRect(s1.x, by, tw, 22);
+      ctx.strokeStyle = isLarge ? "#fecaca" : "#a7f3d0";
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(s1.x, by, tw, 22);
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(draftLabel, s1.x + 8, by + 11);
+
+      this._renderTopCenterBanner(ctx, isLarge, pctStr, Math.round(w), Math.round(h));
+    }
+
+    ctx.restore();
   }
 
   renderPoints(ctx) {
@@ -695,7 +1335,20 @@ export class CanvasViewport {
     this._minimapDotsCache.height = mh;
     const dctx = this._minimapDotsCache.getContext('2d');
     dctx.clearRect(0, 0, mw, mh);
-    if (this.hidePoints || !this.points.length || !this.naturalWidth || !this.naturalHeight) return;
+    if (this.hidePoints || (!this.points.length && !this.bboxes.length) || !this.naturalWidth || !this.naturalHeight) return;
+
+    // Plot bounding boxes on minimap
+    if (this.bboxes.length) {
+      dctx.strokeStyle = "rgba(245, 158, 11, 0.75)";
+      dctx.lineWidth = 1;
+      for (const b of this.bboxes) {
+        const x = (b.x / this.naturalWidth) * mw;
+        const y = (b.y / this.naturalHeight) * mh;
+        const w = Math.max(2, (b.width / this.naturalWidth) * mw);
+        const h = Math.max(2, (b.height / this.naturalHeight) * mh);
+        dctx.strokeRect(x, y, w, h);
+      }
+    }
 
     // Two passes (normal dots, then QA targets) keep fillStyle constant per
     // pass — one style switch instead of one per point.

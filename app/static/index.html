@@ -21,13 +21,16 @@
       </div>
     </div>
 
-    <!-- Decoupled Two-Workflow Switcher -->
+    <!-- Decoupled Three-Workflow Switcher -->
     <nav class="workflow-nav" aria-label="Workflow Switcher">
-      <button id="tabPointMode" class="mode-tab-btn active" title="Workflow 1: Point Annotation (Shortcut: 1 or Alt+1)">
-        <span>🎯 Mode 1: Point Annotation</span>
+      <button id="tabPointMode" class="mode-tab-btn active" title="Workflow 1: Point Annotation">
+        <span>🎯 Mode 1: Point</span>
       </button>
-      <button id="tabQAMode" class="mode-tab-btn qa-mode" title="Workflow 2: QA Annotation (Shortcut: 2 or Alt+2)">
-        <span>💬 Mode 2: QA Annotation</span>
+      <button id="tabBBoxMode" class="mode-tab-btn bbox-mode" title="Workflow 2: Bounding Box Annotation">
+        <span>📦 Mode 2: BBox</span>
+      </button>
+      <button id="tabQAMode" class="mode-tab-btn qa-mode" title="Workflow 3: QA Annotation">
+        <span>💬 Mode 3: QA</span>
       </button>
     </nav>
 
@@ -326,7 +329,126 @@
         </div>
       </div>
 
-      <!-- ================= Workflow 2 Panel: QA Annotation ================= -->
+      <!-- ================= Workflow 2 Panel: BBox Annotation ================= -->
+      <div id="panelBBoxWorkflow" style="display: none; flex-direction: column; height: 100%;">
+        <div class="panel-header">
+          <span class="panel-title">Bounding Box Annotation</span>
+          <span id="totalBBoxesBadge" class="progress-pill">0 boxes</span>
+        </div>
+
+        <div class="panel-body">
+          <!-- Category Manager Box -->
+          <div class="section-box">
+            <div class="section-title">
+              <span>Category Palette (Keys 1-9)</span>
+              <button id="addBBoxCategoryBtn" class="btn" style="padding: 2px 6px; font-size: 0.68rem;">+ Custom Class</button>
+            </div>
+
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:0.7rem; color:var(--text-muted);">Target Density:</span>
+              <select id="bboxDensitySelect" class="filter-select" style="flex:1;">
+                <option value="same_object">Same-Object (NWPU-Crowd)</option>
+                <option value="mixed_object">Mixed-Object (Cluttered Room)</option>
+              </select>
+            </div>
+
+            <div id="bboxCategoryGridContainer" class="category-grid">
+              <!-- Rendered dynamically -->
+            </div>
+          </div>
+
+          <!-- Selected BBox Inspector Box -->
+          <div id="bboxInspectorSection" class="section-box" style="display: none;">
+            <div class="section-title">
+              <span>Selected BBox: <strong id="inspBBoxId" style="color:var(--accent-cyan); font-family:var(--font-mono);">--</strong></span>
+              <button id="deleteSelectedBBoxBtn" class="btn btn-danger" style="padding: 2px 8px; font-size: 0.68rem;" title="Delete selected BBox (Key: Delete)">Delete</button>
+            </div>
+
+            <div class="point-detail-card">
+              <div class="field-row">
+                <span class="field-label">Origin (X, Y):</span>
+                <div style="display:flex; gap:4px;">
+                  <input type="number" id="inspBBoxX" class="field-val-input" style="width:65px;" step="0.5">
+                  <input type="number" id="inspBBoxY" class="field-val-input" style="width:65px;" step="0.5">
+                </div>
+              </div>
+
+              <div class="field-row">
+                <span class="field-label">Size (W × H):</span>
+                <div style="display:flex; gap:4px;">
+                  <input type="number" id="inspBBoxW" class="field-val-input" style="width:65px;" step="0.5" min="1">
+                  <input type="number" id="inspBBoxH" class="field-val-input" style="width:65px;" step="0.5" min="1">
+                </div>
+              </div>
+
+              <div class="field-row">
+                <span class="field-label">Norm [x,y,w,h]:</span>
+                <span id="inspBBoxNorm" style="font-size:0.68rem; font-family:var(--font-mono); color:var(--text-secondary);">[0, 0, 0, 0]</span>
+              </div>
+
+              <div class="field-row">
+                <span class="field-label">Relative Area:</span>
+                <span id="inspBBoxArea" style="font-size:0.74rem; font-family:var(--font-mono); color:var(--text-primary);">0.00%</span>
+              </div>
+
+              <div id="inspBBoxAreaAlert"></div>
+
+              <div class="field-row">
+                <span class="field-label">Category &amp; Color:</span>
+                <div style="display:flex; gap:6px; align-items:center;">
+                  <select id="inspBBoxCatSelect" class="filter-select" style="width:120px;"></select>
+                  <input type="color" id="inspBBoxColorInput" style="width:28px; height:24px; padding:0; border:none; background:transparent; cursor:pointer;">
+                </div>
+              </div>
+
+              <div class="field-row">
+                <span class="field-label">Color / Type:</span>
+                <input type="text" id="inspBBoxAttrColor" class="field-val-input" placeholder="e.g. red_shirt, black">
+              </div>
+
+              <div class="field-row">
+                <span class="field-label">State / Pose:</span>
+                <input type="text" id="inspBBoxAttrState" class="field-val-input" placeholder="e.g. standing, occluded">
+              </div>
+
+              <div class="form-group" style="margin-top:4px;">
+                <label class="form-label">Note / Annotation Details:</label>
+                <textarea id="inspBBoxAttrNote" class="form-control" rows="2" placeholder="Optional notes about this bounding box..."></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- BBoxes Breakdown & List Table -->
+          <div class="section-box" style="flex: 1; display: flex; flex-direction: column;">
+            <div class="section-title">
+              <span>Bounding Boxes on Image</span>
+            </div>
+
+            <div id="bboxesBreakdownContainer" style="display: flex; flex-wrap: wrap; gap: 4px;">
+              <!-- Category & size pills -->
+            </div>
+
+            <div style="flex: 1; overflow-y: auto; margin-top: 8px; max-height: 220px; border: 1px solid var(--border-color); border-radius: 6px;">
+              <table style="width: 100%; border-collapse: collapse; font-size: 0.72rem;">
+                <thead style="background: var(--bg-secondary); position: sticky; top: 0;">
+                  <tr>
+                    <th style="padding: 5px; text-align: left; color: var(--text-muted);">ID</th>
+                    <th style="padding: 5px; text-align: left; color: var(--text-muted);">Class</th>
+                    <th style="padding: 5px; text-align: left; color: var(--text-muted);">Box (x,y,w×h)</th>
+                    <th style="padding: 5px; text-align: left; color: var(--text-muted);">Area</th>
+                    <th style="padding: 5px;"></th>
+                  </tr>
+                </thead>
+                <tbody id="bboxesTableBody">
+                  <!-- Rendered dynamically -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= Workflow 3 Panel: QA Annotation ================= -->
       <div id="panelQAWorkflow" style="display: none; flex-direction: column; height: 100%;">
         <div class="panel-header">
           <span class="panel-title">Question–Answer (QA) Mode</span>
@@ -504,6 +626,7 @@
         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
           <button id="downloadJsonBtn" class="btn btn-primary">📥 Download Full Benchmark JSON</button>
           <button id="downloadCsvBtn" class="btn">📊 Download Points CSV</button>
+          <button id="downloadBBoxesCsvBtn" class="btn">📦 Download BBoxes CSV</button>
           <button id="downloadSingleJsonBtn" class="btn">📄 Download Active Image JSON</button>
           <button id="syncAnnotationFilesBtn" class="btn" title="Force-rewrite every per-image annotation JSON from the database">🔄 Sync Annotation Files</button>
         </div>
@@ -533,16 +656,16 @@
             <tr><td><span class="kbd-badge">Left Drag</span> (empty area)</td><td>Pan view (hold and move mouse)</td></tr>
             <tr><td><span class="kbd-badge">Space</span> + Drag</td><td>Pan canvas view (alternative)</td></tr>
             <tr><td>Mouse Wheel</td><td>Cursor-centered Zoom (0.05x to 40x)</td></tr>
-            <tr><td><span class="kbd-badge">P</span></td><td>Activate Add Point Tool</td></tr>
-            <tr><td><span class="kbd-badge">V</span></td><td>Activate Select / Move Tool</td></tr>
-            <tr><td>Left Click on Point</td><td>Select point & drag to reposition</td></tr>
-            <tr><td><span class="kbd-badge">Delete</span> / <span class="kbd-badge">Backspace</span></td><td>Delete selected point</td></tr>
-            <tr><td>Right Click on Point</td><td>Quick delete point</td></tr>
-            <tr><td><span class="kbd-badge">H</span> (Hold)</td><td>Hide point markers to view raw pixels underneath</td></tr>
-            <tr><td><span class="kbd-badge">Ctrl</span> + <span class="kbd-badge">Z</span></td><td>Undo add, move, or delete point</td></tr>
+            <tr><td><span class="kbd-badge">P</span> / <span class="kbd-badge">B</span></td><td>Activate Add Point / Draw BBox Tool</td></tr>
+            <tr><td><span class="kbd-badge">V</span></td><td>Activate Select / Move / Resize Tool</td></tr>
+            <tr><td>Left Click / Drag</td><td>Add point, draw bounding box, or drag handles to resize</td></tr>
+            <tr><td><span class="kbd-badge">Delete</span> / <span class="kbd-badge">Backspace</span></td><td>Delete selected point or bounding box</td></tr>
+            <tr><td>Right Click on Point / BBox</td><td>Quick delete point or bounding box</td></tr>
+            <tr><td><span class="kbd-badge">H</span> (Hold)</td><td>Hide markers &amp; boxes to view raw pixels underneath</td></tr>
+            <tr><td><span class="kbd-badge">Ctrl</span> + <span class="kbd-badge">Z</span></td><td>Undo add, move, resize, or delete</td></tr>
             <tr><td><span class="kbd-badge">Ctrl</span> + <span class="kbd-badge">Y</span></td><td>Redo action</td></tr>
-            <tr><td><span class="kbd-badge">1</span> - <span class="kbd-badge">9</span></td><td>Quickly switch active category</td></tr>
-            <tr><td><span class="kbd-badge">Esc</span></td><td>Close dialogs / deselect point / cancel QA editor</td></tr>
+            <tr><td><span class="kbd-badge">1</span> - <span class="kbd-badge">9</span></td><td>Quickly switch active category (or reclassify selected BBox)</td></tr>
+            <tr><td><span class="kbd-badge">Esc</span></td><td>Close dialogs / deselect point or BBox / cancel QA editor</td></tr>
             <tr><td><span class="kbd-badge">?</span></td><td>Toggle this shortcuts dialog</td></tr>
           </tbody>
         </table>
@@ -562,6 +685,7 @@
       "imports": {
         "app/canvas_viewport": "/static/js/canvas_viewport.js?v=__APP_VERSION__",
         "app/point_workflow": "/static/js/point_workflow.js?v=__APP_VERSION__",
+        "app/bbox_workflow": "/static/js/bbox_workflow.js?v=__APP_VERSION__",
         "app/qa_workflow": "/static/js/qa_workflow.js?v=__APP_VERSION__"
       }
     }

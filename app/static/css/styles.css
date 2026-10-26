@@ -126,6 +126,10 @@ body {
   box-shadow: var(--shadow-sm);
 }
 
+.mode-tab-btn.bbox-mode.active {
+  background-color: #d97706;
+}
+
 .mode-tab-btn.qa-mode.active {
   background-color: #059669;
 }
@@ -486,7 +490,53 @@ body {
   color: #fca5a5;
 }
 
+.count-bbox {
+  color: #fbbf24;
+}
+
 .count-qa {
+  color: #6ee7b7;
+}
+
+.bbox-size-badge {
+  font-size: 0.64rem;
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-left: 4px;
+  font-weight: 600;
+}
+
+.bbox-size-badge.size-small {
+  background: rgba(56, 189, 248, 0.16);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+}
+
+.bbox-size-badge.size-large {
+  background: rgba(251, 191, 36, 0.16);
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+}
+
+.bbox-area-alert {
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  line-height: 1.4;
+  margin-top: 6px;
+  animation: slideIn 0.2s ease-out;
+}
+
+.bbox-area-alert.alert-warning {
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid rgba(239, 68, 68, 0.55);
+  color: #fca5a5;
+  box-shadow: 0 0 12px rgba(239, 68, 68, 0.2);
+}
+
+.bbox-area-alert.alert-success {
+  background: rgba(16, 185, 129, 0.14);
+  border: 1px solid rgba(16, 185, 129, 0.4);
   color: #6ee7b7;
 }
 
@@ -1235,6 +1285,13 @@ textarea.form-control {
 
 .toast.toast-success {
   border-color: #10b981;
+}
+
+.toast.toast-warning {
+  border-color: #f59e0b;
+  background: rgba(30, 20, 10, 0.95);
+  color: #fde68a;
+  box-shadow: 0 4px 16px rgba(245, 158, 11, 0.3);
 }
 
 .toast.toast-error {

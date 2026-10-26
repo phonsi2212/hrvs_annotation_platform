@@ -44,6 +44,7 @@ def init_db():
         dataset TEXT NOT NULL DEFAULT 'Default',
         density_group TEXT NOT NULL CHECK(density_group IN ('same_object', 'mixed_object')),
         status TEXT NOT NULL DEFAULT 'todo' CHECK(status IN ('todo', 'in_progress', 'completed')),
+        bbox_status TEXT NOT NULL DEFAULT 'todo' CHECK(bbox_status IN ('todo', 'in_progress', 'completed')),
         qa_status TEXT NOT NULL DEFAULT 'todo' CHECK(qa_status IN ('todo', 'in_progress', 'completed')),
         width INTEGER NOT NULL,
         height INTEGER NOT NULL,
@@ -74,6 +75,10 @@ def init_db():
             WHERE image_id IN (SELECT DISTINCT image_id FROM qa_annotations)
         """)
 
+    # Migration: BBox status column.
+    if "bbox_status" not in existing_cols:
+        cur.execute("ALTER TABLE images ADD COLUMN bbox_status TEXT NOT NULL DEFAULT 'todo'")
+
     # Points table
     cur.execute("""
     CREATE TABLE IF NOT EXISTS points (
@@ -92,6 +97,28 @@ def init_db():
     )
     """)
 
+    # Bounding Boxes table
+    cur.execute("""
+    CREATE TABLE IF NOT EXISTS bboxes (
+        bbox_id TEXT PRIMARY KEY,
+        image_id TEXT NOT NULL,
+        x REAL NOT NULL,
+        y REAL NOT NULL,
+        width REAL NOT NULL,
+        height REAL NOT NULL,
+        x_norm REAL NOT NULL,
+        y_norm REAL NOT NULL,
+        width_norm REAL NOT NULL,
+        height_norm REAL NOT NULL,
+        category TEXT NOT NULL,
+        color TEXT DEFAULT '#EF4444',
+        attributes TEXT DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (image_id) REFERENCES images(image_id) ON DELETE CASCADE
+    )
+    """)
+
     # QA Annotations table
     cur.execute("""
     CREATE TABLE IF NOT EXISTS qa_annotations (
@@ -101,11 +128,17 @@ def init_db():
         question TEXT NOT NULL,
         answer TEXT NOT NULL,
         target_point_ids TEXT DEFAULT '[]',
+        target_bbox_ids TEXT DEFAULT '[]',
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         FOREIGN KEY (image_id) REFERENCES images(image_id) ON DELETE CASCADE
     )
     """)
+
+    cur.execute("PRAGMA table_info(qa_annotations)")
+    qa_cols = {row[1] for row in cur.fetchall()}
+    if "target_bbox_ids" not in qa_cols:
+        cur.execute("ALTER TABLE qa_annotations ADD COLUMN target_bbox_ids TEXT DEFAULT '[]'")
 
     # Categories config table (allows users to add/customize category list & colors)
     cur.execute("""
@@ -120,8 +153,10 @@ def init_db():
 
     # Create Indexes for fast querying
     cur.execute("CREATE INDEX IF NOT EXISTS idx_points_image ON points(image_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_bboxes_image ON bboxes(image_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_qa_image ON qa_annotations(image_id)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_images_status ON images(status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_images_bbox_status ON images(bbox_status)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_images_group ON images(density_group)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_images_dataset ON images(dataset)")
 

@@ -19,6 +19,7 @@ from app.database import (
 )
 from app.schemas import (
     PointCreate, PointUpdate, PointOut,
+    BBoxCreate, BBoxUpdate, BBoxOut,
     QAPairCreate, QAPairUpdate, QAPairOut,
     ImageUpdate, CategoryModel, ImportFolderRequest, DatasetImportRequest, build_export_data
 )
@@ -76,8 +77,10 @@ def get_index():
                     "js/app.js",
                     "js/canvas_viewport.js",
                     "js/point_workflow.js",
+                    "js/bbox_workflow.js",
                     "js/qa_workflow.js",
                 )
+                if os.path.exists(os.path.join(STATIC_DIR, rel))
             )
             html = html.replace("__APP_VERSION__", str(newest))
         except OSError:
@@ -135,6 +138,7 @@ def get_image_thumbnail(
 @app.get("/api/images")
 def list_images(
     status: Optional[str] = None,
+    bbox_status: Optional[str] = None,
     qa_status: Optional[str] = None,
     density_group: Optional[str] = None,
     dataset: Optional[str] = None,
@@ -146,9 +150,11 @@ def list_images(
     # points x qa rows per image (e.g. 10k points x 100 QA = 1M rows for one image).
     query = """
         SELECT
-            i.image_id, i.file_name, i.file_path, i.dataset, i.density_group, i.status, i.qa_status,
+            i.image_id, i.file_name, i.file_path, i.dataset, i.density_group,
+            i.status, i.bbox_status, i.qa_status,
             i.width, i.height, i.file_size, i.created_at, i.updated_at,
             (SELECT COUNT(*) FROM points p WHERE p.image_id = i.image_id) AS point_count,
+            (SELECT COUNT(*) FROM bboxes b WHERE b.image_id = i.image_id) AS bbox_count,
             (SELECT COUNT(*) FROM qa_annotations q WHERE q.image_id = i.image_id) AS qa_count
         FROM images i
         WHERE 1=1
@@ -157,6 +163,9 @@ def list_images(
     if status and status != "all":
         query += " AND i.status = ?"
         params.append(status)
+    if bbox_status and bbox_status != "all":
+        query += " AND i.bbox_status = ?"
+        params.append(bbox_status)
     if qa_status and qa_status != "all":
         query += " AND i.qa_status = ?"
         params.append(qa_status)
@@ -185,11 +194,13 @@ def list_images(
             "dataset": r["dataset"],
             "density_group": r["density_group"],
             "status": r["status"],
+            "bbox_status": r["bbox_status"] if "bbox_status" in r.keys() else "todo",
             "qa_status": r["qa_status"],
             "width": r["width"],
             "height": r["height"],
             "file_size": r["file_size"],
             "point_count": r["point_count"],
+            "bbox_count": r["bbox_count"],
             "qa_count": r["qa_count"],
             "created_at": r["created_at"],
             "updated_at": r["updated_at"]
@@ -226,6 +237,35 @@ def get_image_details(image_id: str, conn: sqlite3.Connection = Depends(get_db))
             "updated_at": p["updated_at"]
         })
 
+    cur.execute("SELECT * FROM bboxes WHERE image_id = ? ORDER BY bbox_id ASC", (image_id,))
+    bb_rows = cur.fetchall()
+    bboxes = []
+    for b in bb_rows:
+        try:
+            b_attrs = json.loads(b["attributes"]) if b["attributes"] else {}
+        except Exception:
+            b_attrs = {}
+        w_norm = float(b["width_norm"])
+        h_norm = float(b["height_norm"])
+        bboxes.append({
+            "bbox_id": b["bbox_id"],
+            "image_id": b["image_id"],
+            "x": b["x"],
+            "y": b["y"],
+            "width": b["width"],
+            "height": b["height"],
+            "x_norm": b["x_norm"],
+            "y_norm": b["y_norm"],
+            "width_norm": w_norm,
+            "height_norm": h_norm,
+            "area_ratio": round(w_norm * h_norm, 8),
+            "category": b["category"],
+            "color": b["color"],
+            "attributes": b_attrs,
+            "created_at": b["created_at"],
+            "updated_at": b["updated_at"]
+        })
+
     cur.execute("SELECT * FROM qa_annotations WHERE image_id = ? ORDER BY qa_id ASC", (image_id,))
     qa_rows = cur.fetchall()
     qa_list = []
@@ -234,6 +274,10 @@ def get_image_details(image_id: str, conn: sqlite3.Connection = Depends(get_db))
             t_ids = json.loads(q["target_point_ids"]) if q["target_point_ids"] else []
         except Exception:
             t_ids = []
+        try:
+            t_b_ids = json.loads(q["target_bbox_ids"]) if "target_bbox_ids" in q.keys() and q["target_bbox_ids"] else []
+        except Exception:
+            t_b_ids = []
         qa_list.append({
             "qa_id": q["qa_id"],
             "image_id": q["image_id"],
@@ -241,10 +285,12 @@ def get_image_details(image_id: str, conn: sqlite3.Connection = Depends(get_db))
             "question": q["question"],
             "answer": q["answer"],
             "target_point_ids": t_ids,
+            "target_bbox_ids": t_b_ids,
             "created_at": q["created_at"],
             "updated_at": q["updated_at"]
         })
 
+    img_keys = img.keys()
     return {
         "image_id": img["image_id"],
         "file_name": img["file_name"],
@@ -252,12 +298,15 @@ def get_image_details(image_id: str, conn: sqlite3.Connection = Depends(get_db))
         "dataset": img["dataset"],
         "density_group": img["density_group"],
         "status": img["status"],
+        "bbox_status": img["bbox_status"] if "bbox_status" in img_keys else "todo",
         "qa_status": img["qa_status"],
         "width": img["width"],
         "height": img["height"],
         "file_size": img["file_size"],
         "point_count": len(points),
         "points": points,
+        "bbox_count": len(bboxes),
+        "bboxes": bboxes,
         "qa_annotations": qa_list
     }
 
@@ -275,6 +324,11 @@ def update_image(image_id: str, payload: ImageUpdate, conn: sqlite3.Connection =
             raise HTTPException(status_code=400, detail="Invalid status")
         updates.append("status = ?")
         params.append(payload.status)
+    if payload.bbox_status is not None:
+        if payload.bbox_status not in ("todo", "in_progress", "completed"):
+            raise HTTPException(status_code=400, detail="Invalid bbox_status")
+        updates.append("bbox_status = ?")
+        params.append(payload.bbox_status)
     if payload.qa_status is not None:
         if payload.qa_status not in ("todo", "in_progress", "completed"):
             raise HTTPException(status_code=400, detail="Invalid qa_status")
@@ -286,6 +340,7 @@ def update_image(image_id: str, payload: ImageUpdate, conn: sqlite3.Connection =
         updates.append("density_group = ?")
         params.append(payload.density_group)
 
+    anno_path = None
     if updates:
         updates.append("updated_at = ?")
         params.append(utc_now_iso())
@@ -313,8 +368,7 @@ def delete_image(image_id: str, conn: sqlite3.Connection = Depends(get_db)):
 @app.get("/api/datasets")
 def list_datasets(conn: sqlite3.Connection = Depends(get_db)):
     """Dataset folder summary for the sidebar: image counts, progress and
-    point totals per dataset (point counts are aggregated in Python from a
-    per-image index scan — much cheaper than a points x images JOIN)."""
+    point/bbox totals per dataset."""
     cur = conn.cursor()
     cur.execute("""
         SELECT dataset,
@@ -322,6 +376,7 @@ def list_datasets(conn: sqlite3.Connection = Depends(get_db)):
                SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_count,
                SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) AS in_progress_count,
                SUM(CASE WHEN status = 'todo' THEN 1 ELSE 0 END) AS todo_count,
+               SUM(CASE WHEN bbox_status = 'completed' THEN 1 ELSE 0 END) AS bbox_completed_count,
                SUM(CASE WHEN qa_status = 'completed' THEN 1 ELSE 0 END) AS qa_completed_count,
                SUM(CASE WHEN density_group = 'same_object' THEN 1 ELSE 0 END) AS same_object_count,
                SUM(CASE WHEN density_group = 'mixed_object' THEN 1 ELSE 0 END) AS mixed_object_count
@@ -335,10 +390,12 @@ def list_datasets(conn: sqlite3.Connection = Depends(get_db)):
         "completed_count": r["completed_count"],
         "in_progress_count": r["in_progress_count"],
         "todo_count": r["todo_count"],
+        "bbox_completed_count": r["bbox_completed_count"],
         "qa_completed_count": r["qa_completed_count"],
         "same_object_count": r["same_object_count"],
         "mixed_object_count": r["mixed_object_count"],
-        "point_count": 0
+        "point_count": 0,
+        "bbox_count": 0
     } for r in cur.fetchall()}
 
     cur.execute("SELECT image_id, dataset FROM images")
@@ -348,6 +405,11 @@ def list_datasets(conn: sqlite3.Connection = Depends(get_db)):
         ds = image_dataset.get(image_id)
         if ds and ds in datasets:
             datasets[ds]["point_count"] += c
+    cur.execute("SELECT image_id, COUNT(*) AS c FROM bboxes GROUP BY image_id")
+    for image_id, c in cur.fetchall():
+        ds = image_dataset.get(image_id)
+        if ds and ds in datasets:
+            datasets[ds]["bbox_count"] += c
 
     return {"total": len(datasets), "datasets": list(datasets.values())}
 
@@ -588,6 +650,31 @@ def load_annotation_data(image_id: str, data: dict, conn: sqlite3.Connection):
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (pt_id, image_id, x, y, x_norm, y_norm, cat, color, attrs, now, now))
 
+    # Load bboxes
+    bboxes = data.get("bboxes", [])
+    for b in bboxes:
+        bb_id = b.get("bbox_id") or f"bb_{datetime.now().timestamp()}_{b.get('x', 0)}"
+        bx = float(b.get("x", 0))
+        by = float(b.get("y", 0))
+        bw = float(b.get("width", 10))
+        bh = float(b.get("height", 10))
+        bx_norm = float(b.get("x_norm", bx / width if width else 0))
+        by_norm = float(b.get("y_norm", by / height if height else 0))
+        bw_norm = float(b.get("width_norm", bw / width if width else 0))
+        bh_norm = float(b.get("height_norm", bh / height if height else 0))
+        b_cat = b.get("category", "person_head")
+        b_color = b.get("color", "#EF4444")
+        b_attrs = json.dumps(b.get("attributes", {}))
+
+        cur.execute("""
+            INSERT OR REPLACE INTO bboxes (
+                bbox_id, image_id, x, y, width, height,
+                x_norm, y_norm, width_norm, height_norm,
+                category, color, attributes, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (bb_id, image_id, bx, by, bw, bh, bx_norm, by_norm, bw_norm, bh_norm, b_cat, b_color, b_attrs, now, now))
+
     # Load QA pairs
     qa_list = data.get("qa_annotations", [])
     for q in qa_list:
@@ -596,11 +683,12 @@ def load_annotation_data(image_id: str, data: dict, conn: sqlite3.Connection):
         question = q.get("question", "")
         answer = q.get("answer", "")
         target_ids = json.dumps(q.get("target_point_ids", []))
+        target_b_ids = json.dumps(q.get("target_bbox_ids", []))
 
         cur.execute("""
-            INSERT OR REPLACE INTO qa_annotations (qa_id, image_id, task_type, question, answer, target_point_ids, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (qa_id, image_id, task_type, question, answer, target_ids, now, now))
+            INSERT OR REPLACE INTO qa_annotations (qa_id, image_id, task_type, question, answer, target_point_ids, target_bbox_ids, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (qa_id, image_id, task_type, question, answer, target_ids, target_b_ids, now, now))
 
     # Imported question & answer pairs mark the image QA-completed
     if qa_list:
@@ -823,6 +911,275 @@ def clear_image_points(image_id: str, conn: sqlite3.Connection = Depends(get_db)
     sync_image_annotation_file(conn, image_id)
     return {"status": "ok", "cleared_image_id": image_id}
 
+# ----------------- Bounding Box CRUD Endpoints -----------------
+
+@app.post("/api/images/{image_id}/bboxes")
+def add_bbox(image_id: str, payload: BBoxCreate, conn: sqlite3.Connection = Depends(get_db)):
+    cur = conn.cursor()
+    cur.execute("SELECT width, height, bbox_status FROM images WHERE image_id = ?", (image_id,))
+    img = cur.fetchone()
+    if not img:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    bbox_status = img["bbox_status"] if "bbox_status" in img.keys() else "todo"
+    if bbox_status == "completed":
+        raise HTTPException(status_code=409, detail="Image BBox is completed (locked). Set BBox status to todo / in_progress to edit bounding boxes.")
+
+    width, height = img["width"], img["height"]
+    now = utc_now_iso()
+
+    # Normalize box coordinates so width/height are always positive and clamped to image bounds
+    x1 = max(0.0, min(float(width), float(payload.x)))
+    y1 = max(0.0, min(float(height), float(payload.y)))
+    bw = max(1.0, min(float(width) - x1, float(payload.width)))
+    bh = max(1.0, min(float(height) - y1, float(payload.height)))
+
+    if payload.bbox_id:
+        bb_id = payload.bbox_id
+    else:
+        cur.execute("SELECT COUNT(*) FROM bboxes WHERE image_id = ?", (image_id,))
+        count = cur.fetchone()[0] + 1
+        bb_id = f"bb_{count:03d}"
+        cur.execute("SELECT 1 FROM bboxes WHERE bbox_id = ?", (bb_id,))
+        while cur.fetchone():
+            count += 1
+            bb_id = f"bb_{count:03d}"
+            cur.execute("SELECT 1 FROM bboxes WHERE bbox_id = ?", (bb_id,))
+
+    x_norm = round(x1 / width, 6) if width > 0 else 0.0
+    y_norm = round(y1 / height, 6) if height > 0 else 0.0
+    w_norm = round(bw / width, 6) if width > 0 else 0.0
+    h_norm = round(bh / height, 6) if height > 0 else 0.0
+    area_ratio = round(w_norm * h_norm, 8)
+    attrs_json = json.dumps(payload.attributes or {})
+
+    if bbox_status == "todo":
+        bbox_status = "in_progress"
+        cur.execute("UPDATE images SET bbox_status = 'in_progress', updated_at = ? WHERE image_id = ?", (now, image_id))
+
+    cur.execute("""
+        INSERT INTO bboxes (
+            bbox_id, image_id, x, y, width, height,
+            x_norm, y_norm, width_norm, height_norm,
+            category, color, attributes, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        bb_id, image_id, round(x1, 2), round(y1, 2), round(bw, 2), round(bh, 2),
+        x_norm, y_norm, w_norm, h_norm,
+        payload.category, payload.color or "#EF4444", attrs_json, now, now
+    ))
+    conn.commit()
+    sync_image_annotation_file(conn, image_id)
+
+    return {
+        "bbox_id": bb_id,
+        "image_id": image_id,
+        "x": round(x1, 2),
+        "y": round(y1, 2),
+        "width": round(bw, 2),
+        "height": round(bh, 2),
+        "x_norm": x_norm,
+        "y_norm": y_norm,
+        "width_norm": w_norm,
+        "height_norm": h_norm,
+        "area_ratio": area_ratio,
+        "category": payload.category,
+        "color": payload.color or "#EF4444",
+        "attributes": payload.attributes or {},
+        "bbox_status": bbox_status,
+        "created_at": now,
+        "updated_at": now
+    }
+
+@app.post("/api/images/{image_id}/bboxes/batch")
+def add_bboxes_batch(image_id: str, bboxes: List[BBoxCreate], conn: sqlite3.Connection = Depends(get_db)):
+    cur = conn.cursor()
+    cur.execute("SELECT width, height, bbox_status FROM images WHERE image_id = ?", (image_id,))
+    img = cur.fetchone()
+    if not img:
+        raise HTTPException(status_code=404, detail="Image not found")
+    bbox_status = img["bbox_status"] if "bbox_status" in img.keys() else "todo"
+    if bbox_status == "completed":
+        raise HTTPException(status_code=409, detail="Image BBox is completed (locked). Set BBox status to todo / in_progress to edit bounding boxes.")
+    width, height = img["width"], img["height"]
+    now = utc_now_iso()
+
+    cur.execute("SELECT COUNT(*) FROM bboxes WHERE image_id = ?", (image_id,))
+    next_num = cur.fetchone()[0] + 1
+
+    existing_ids = set()
+    cur.execute("SELECT bbox_id FROM bboxes WHERE image_id = ?", (image_id,))
+    for r in cur.fetchall():
+        existing_ids.add(r[0])
+
+    added = []
+    for b in bboxes:
+        bb_id = b.bbox_id or f"bb_{next_num:03d}"
+        while bb_id in existing_ids:
+            next_num += 1
+            bb_id = f"bb_{next_num:03d}"
+        next_num += 1
+        existing_ids.add(bb_id)
+
+        x1 = max(0.0, min(float(width), float(b.x)))
+        y1 = max(0.0, min(float(height), float(b.y)))
+        bw = max(1.0, min(float(width) - x1, float(b.width)))
+        bh = max(1.0, min(float(height) - y1, float(b.height)))
+
+        x_norm = round(x1 / width, 6) if width else 0.0
+        y_norm = round(y1 / height, 6) if height else 0.0
+        w_norm = round(bw / width, 6) if width else 0.0
+        h_norm = round(bh / height, 6) if height else 0.0
+        attrs_json = json.dumps(b.attributes or {})
+
+        cur.execute("""
+            INSERT INTO bboxes (
+                bbox_id, image_id, x, y, width, height,
+                x_norm, y_norm, width_norm, height_norm,
+                category, color, attributes, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            bb_id, image_id, round(x1, 2), round(y1, 2), round(bw, 2), round(bh, 2),
+            x_norm, y_norm, w_norm, h_norm,
+            b.category, b.color or "#EF4444", attrs_json, now, now
+        ))
+        added.append(bb_id)
+
+    if added and bbox_status == "todo":
+        cur.execute("UPDATE images SET bbox_status = 'in_progress', updated_at = ? WHERE image_id = ?", (now, image_id))
+
+    conn.commit()
+    sync_image_annotation_file(conn, image_id)
+    return {"status": "ok", "added_count": len(added), "bbox_ids": added}
+
+@app.patch("/api/bboxes/{bbox_id}")
+def update_bbox(bbox_id: str, payload: BBoxUpdate, conn: sqlite3.Connection = Depends(get_db)):
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT b.*, i.width AS img_width, i.height AS img_height, i.bbox_status AS image_bbox_status
+        FROM bboxes b JOIN images i ON b.image_id = i.image_id
+        WHERE b.bbox_id = ?
+    """, (bbox_id,))
+    bb = cur.fetchone()
+    if not bb:
+        raise HTTPException(status_code=404, detail="BBox not found")
+    if bb["image_bbox_status"] == "completed":
+        raise HTTPException(status_code=409, detail="Image BBox is completed (locked). Set BBox status to todo / in_progress to edit bounding boxes.")
+
+    img_w, img_h = bb["img_width"], bb["img_height"]
+    now = utc_now_iso()
+
+    updates = []
+    params = []
+
+    new_x = payload.x if payload.x is not None else bb["x"]
+    new_y = payload.y if payload.y is not None else bb["y"]
+    new_w = payload.width if payload.width is not None else bb["width"]
+    new_h = payload.height if payload.height is not None else bb["height"]
+
+    if any(v is not None for v in (payload.x, payload.y, payload.width, payload.height)):
+        new_x = max(0.0, min(float(img_w), float(new_x)))
+        new_y = max(0.0, min(float(img_h), float(new_y)))
+        new_w = max(1.0, min(float(img_w) - new_x, float(new_w)))
+        new_h = max(1.0, min(float(img_h) - new_y, float(new_h)))
+        x_norm = round(new_x / img_w, 6) if img_w else 0.0
+        y_norm = round(new_y / img_h, 6) if img_h else 0.0
+        w_norm = round(new_w / img_w, 6) if img_w else 0.0
+        h_norm = round(new_h / img_h, 6) if img_h else 0.0
+        updates.extend([
+            "x = ?", "y = ?", "width = ?", "height = ?",
+            "x_norm = ?", "y_norm = ?", "width_norm = ?", "height_norm = ?"
+        ])
+        params.extend([round(new_x, 2), round(new_y, 2), round(new_w, 2), round(new_h, 2), x_norm, y_norm, w_norm, h_norm])
+    else:
+        x_norm = bb["x_norm"]
+        y_norm = bb["y_norm"]
+        w_norm = bb["width_norm"]
+        h_norm = bb["height_norm"]
+
+    if payload.category is not None:
+        updates.append("category = ?")
+        params.append(payload.category)
+    if payload.color is not None:
+        updates.append("color = ?")
+        params.append(payload.color)
+    if payload.attributes is not None:
+        updates.append("attributes = ?")
+        params.append(json.dumps(payload.attributes))
+
+    if updates:
+        updates.append("updated_at = ?")
+        params.append(now)
+        params.append(bbox_id)
+        cur.execute(f"UPDATE bboxes SET {', '.join(updates)} WHERE bbox_id = ?", params)
+        conn.commit()
+        sync_image_annotation_file(conn, bb["image_id"])
+
+    return {
+        "status": "ok",
+        "bbox_id": bbox_id,
+        "x": round(new_x, 2),
+        "y": round(new_y, 2),
+        "width": round(new_w, 2),
+        "height": round(new_h, 2),
+        "x_norm": x_norm,
+        "y_norm": y_norm,
+        "width_norm": w_norm,
+        "height_norm": h_norm,
+        "area_ratio": round(float(w_norm) * float(h_norm), 8)
+    }
+
+@app.delete("/api/bboxes/{bbox_id}")
+def delete_bbox(bbox_id: str, conn: sqlite3.Connection = Depends(get_db)):
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT b.image_id, i.bbox_status AS image_bbox_status
+        FROM bboxes b JOIN images i ON b.image_id = i.image_id
+        WHERE b.bbox_id = ?
+    """, (bbox_id,))
+    bb = cur.fetchone()
+    if not bb:
+        raise HTTPException(status_code=404, detail="BBox not found")
+    if bb["image_bbox_status"] == "completed":
+        raise HTTPException(status_code=409, detail="Image BBox is completed (locked). Set BBox status to todo / in_progress to edit bounding boxes.")
+
+    image_id = bb["image_id"]
+    cur.execute("DELETE FROM bboxes WHERE bbox_id = ?", (bbox_id,))
+
+    # Also clean up from QA target_bbox_ids
+    cur.execute("SELECT qa_id, target_bbox_ids FROM qa_annotations WHERE image_id = ?", (image_id,))
+    qas = cur.fetchall()
+    for q in qas:
+        try:
+            ids = json.loads(q["target_bbox_ids"] or "[]")
+            if bbox_id in ids:
+                ids.remove(bbox_id)
+                cur.execute("UPDATE qa_annotations SET target_bbox_ids = ? WHERE qa_id = ?", (json.dumps(ids), q["qa_id"]))
+        except Exception:
+            pass
+
+    conn.commit()
+    sync_image_annotation_file(conn, image_id)
+    return {"status": "ok", "deleted_bbox_id": bbox_id}
+
+@app.delete("/api/images/{image_id}/bboxes")
+def clear_image_bboxes(image_id: str, conn: sqlite3.Connection = Depends(get_db)):
+    cur = conn.cursor()
+    cur.execute("SELECT bbox_status FROM images WHERE image_id = ?", (image_id,))
+    img = cur.fetchone()
+    if not img:
+        raise HTTPException(status_code=404, detail="Image not found")
+    bbox_status = img["bbox_status"] if "bbox_status" in img.keys() else "todo"
+    if bbox_status == "completed":
+        raise HTTPException(status_code=409, detail="Image BBox is completed (locked). Set BBox status to todo / in_progress to edit bounding boxes.")
+    cur.execute("DELETE FROM bboxes WHERE image_id = ?", (image_id,))
+    cur.execute("UPDATE qa_annotations SET target_bbox_ids = '[]' WHERE image_id = ?", (image_id,))
+    conn.commit()
+    sync_image_annotation_file(conn, image_id)
+    return {"status": "ok", "cleared_image_id": image_id}
+
 # ----------------- QA CRUD Endpoints -----------------
 
 @app.post("/api/images/{image_id}/qa")
@@ -849,11 +1206,12 @@ def add_qa_pair(image_id: str, payload: QAPairCreate, conn: sqlite3.Connection =
             qa_id = f"qa_{int(datetime.now().timestamp() * 1000) % 1000000:06d}"
 
     t_ids_json = json.dumps(payload.target_point_ids)
+    t_b_ids_json = json.dumps(payload.target_bbox_ids)
 
     cur.execute("""
-        INSERT INTO qa_annotations (qa_id, image_id, task_type, question, answer, target_point_ids, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (qa_id, image_id, payload.task_type, payload.question, payload.answer, t_ids_json, now, now))
+        INSERT INTO qa_annotations (qa_id, image_id, task_type, question, answer, target_point_ids, target_bbox_ids, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (qa_id, image_id, payload.task_type, payload.question, payload.answer, t_ids_json, t_b_ids_json, now, now))
 
     # Auto-derive: an image that now carries a question & answer becomes QA-completed
     qa_status = img["qa_status"]
@@ -871,6 +1229,7 @@ def add_qa_pair(image_id: str, payload: QAPairCreate, conn: sqlite3.Connection =
         "question": payload.question,
         "answer": payload.answer,
         "target_point_ids": payload.target_point_ids,
+        "target_bbox_ids": payload.target_bbox_ids,
         "qa_status": qa_status,
         "created_at": now,
         "updated_at": now
@@ -907,6 +1266,9 @@ def update_qa_pair(qa_id: str, payload: QAPairUpdate, conn: sqlite3.Connection =
     if payload.target_point_ids is not None:
         updates.append("target_point_ids = ?")
         params.append(json.dumps(payload.target_point_ids))
+    if payload.target_bbox_ids is not None:
+        updates.append("target_bbox_ids = ?")
+        params.append(json.dumps(payload.target_bbox_ids))
 
     if updates:
         updates.append("updated_at = ?")
@@ -993,11 +1355,17 @@ def get_stats(conn: sqlite3.Connection = Depends(get_db)):
     cur.execute("SELECT COUNT(*) FROM images WHERE status = 'completed'")
     completed_images = cur.fetchone()[0]
 
+    cur.execute("SELECT COUNT(*) FROM images WHERE bbox_status = 'completed'")
+    bbox_completed_images = cur.fetchone()[0]
+
     cur.execute("SELECT COUNT(*) FROM images WHERE qa_status = 'completed'")
     qa_completed_images = cur.fetchone()[0]
 
     cur.execute("SELECT COUNT(*) FROM points")
     total_points = cur.fetchone()[0]
+
+    cur.execute("SELECT COUNT(*) FROM bboxes")
+    total_bboxes = cur.fetchone()[0]
 
     cur.execute("SELECT COUNT(*) FROM qa_annotations")
     total_qa = cur.fetchone()[0]
@@ -1008,9 +1376,11 @@ def get_stats(conn: sqlite3.Connection = Depends(get_db)):
     return {
         "total_images": total_images,
         "completed_images": completed_images,
+        "bbox_completed_images": bbox_completed_images,
         "qa_completed_images": qa_completed_images,
         "in_progress_images": total_images - completed_images,
         "total_points": total_points,
+        "total_bboxes": total_bboxes,
         "total_qa": total_qa,
         "groups": group_counts
     }
@@ -1082,6 +1452,50 @@ def export_dataset_csv(conn: sqlite3.Connection = Depends(get_db)):
         f.write(csv_data)
 
     # UTF-8 BOM so Excel opens non-ASCII notes (Vietnamese, symbols) correctly
+    return StreamingResponse(
+        io.BytesIO(("﻿" + csv_data).encode("utf-8")),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+@app.get("/api/export/bboxes-csv")
+def export_bboxes_csv(conn: sqlite3.Connection = Depends(get_db)):
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT
+            i.image_id, i.file_name, i.dataset, i.density_group, i.bbox_status, i.width, i.height,
+            b.bbox_id, b.x, b.y, b.width AS bw, b.height AS bh,
+            b.x_norm, b.y_norm, b.width_norm, b.height_norm,
+            b.category, b.color, b.attributes,
+            b.created_at as bbox_created_at
+        FROM images i
+        JOIN bboxes b ON i.image_id = b.image_id
+        ORDER BY i.image_id, b.bbox_id
+    """)
+    rows = cur.fetchall()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "image_id", "file_name", "dataset", "density_group", "bbox_status", "original_width", "original_height",
+        "bbox_id", "x", "y", "width", "height", "x_norm", "y_norm", "width_norm", "height_norm", "area_ratio",
+        "category", "color", "attributes_json", "created_at"
+    ])
+    for r in rows:
+        area_ratio = round(float(r["width_norm"]) * float(r["height_norm"]), 8)
+        writer.writerow([
+            r["image_id"], r["file_name"], r["dataset"], r["density_group"], r["bbox_status"], r["width"], r["height"],
+            r["bbox_id"], r["x"], r["y"], r["bw"], r["bh"],
+            r["x_norm"], r["y_norm"], r["width_norm"], r["height_norm"], area_ratio,
+            r["category"], r["color"], r["attributes"], r["bbox_created_at"]
+        ])
+
+    csv_data = output.getvalue()
+    filename = f"hrvs_bboxes_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+    save_path = os.path.join(EXPORT_DIR, filename)
+    with open(save_path, "w", encoding="utf-8-sig") as f:
+        f.write(csv_data)
+
     return StreamingResponse(
         io.BytesIO(("﻿" + csv_data).encode("utf-8")),
         media_type="text/csv",

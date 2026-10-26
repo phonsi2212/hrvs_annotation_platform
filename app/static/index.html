@@ -481,58 +481,99 @@
 
           <!-- QA Editor Form / Card -->
           <div id="qaEditorCard" class="section-box" style="display: none; border-color: #10b981;">
-            <div class="section-title" style="color: #6ee7b7;">
-              <span id="qaEditorTitle">Compose QA Pair</span>
+            <div class="section-title" style="color: #6ee7b7; display:flex; justify-content:space-between; align-items:center;">
+              <span id="qaEditorTitle">Compose Visual Search QA Sample</span>
+              <span id="qaImageIdBadge" style="font-size:0.68rem; font-family:var(--font-mono); color:var(--text-muted); background:var(--bg-secondary); padding:2px 6px; border-radius:4px;"></span>
+            </div>
+
+            <!-- Question ID & Density Category -->
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+              <div class="form-group">
+                <label class="form-label" style="font-size:0.72rem;">Question ID:</label>
+                <input type="text" id="qaQuestionIdInput" class="form-control" placeholder="e.g. 0008_q01" style="font-family:var(--font-mono); font-size:0.75rem;">
+              </div>
+              <div class="form-group">
+                <label class="form-label" style="font-size:0.72rem;">Density Category:</label>
+                <select id="qaDensityCategorySelect" class="form-control" style="font-weight:600; font-size:0.75rem;">
+                  <option value="people">people</option>
+                  <option value="animal">animal</option>
+                  <option value="vehicle">vehicle</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Question Type & Target Group -->
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+              <div class="form-group">
+                <label class="form-label" style="font-size:0.72rem;">Question Type:</label>
+                <select id="qaQuestionTypeSelect" class="form-control" style="font-size:0.75rem; font-weight:500;">
+                  <option value="Attribute">Attribute</option>
+                  <option value="Spatial">Spatial</option>
+                  <option value="Relation">Relation</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label" style="font-size:0.72rem;">Target Group:</label>
+                <select id="qaTargetGroupSelect" class="form-control" style="font-size:0.75rem; font-weight:500;">
+                  <option value="Same-density">Same-density</option>
+                  <option value="Different-density">Different-density</option>
+                </select>
+              </div>
             </div>
 
             <div class="form-group">
-              <label class="form-label">Task Type:</label>
-              <select id="qaTaskTypeSelect" class="form-control">
-                <option value="Visual Search">Visual Search</option>
-                <option value="Counting">Counting</option>
-                <option value="Attribute Recognition">Attribute Recognition</option>
-                <option value="Spatial Relation">Spatial Relation</option>
-              </select>
+              <label class="form-label" style="font-size:0.72rem;">Question (Required, English):</label>
+              <textarea id="qaQuestionInput" class="form-control" rows="2" placeholder="e.g. Where is the person wearing a yellow cap standing next to the white umbrella?"></textarea>
             </div>
 
             <div class="form-group">
-              <label class="form-label">Quick Prompt Template:</label>
-              <select id="quickPromptSelect" class="form-control" style="font-size:0.75rem; color:var(--text-secondary);">
-                <option value="">-- Choose template (optional) --</option>
-                <option value="Where is the person wearing a red hat?">Where is the person wearing a red hat?</option>
-                <option value="How many people are located in the center dense zone?">How many people are located in the center dense zone?</option>
-                <option value="What color is the mug next to the laptop?">What color is the mug next to the laptop?</option>
-                <option value="Which object is placed directly on top of the desk?">Which object is placed directly on top of the desk?</option>
-              </select>
+              <label class="form-label" style="font-size:0.72rem;">Answer (Required, Short &amp; Objective):</label>
+              <textarea id="qaAnswerInput" class="form-control" rows="2" placeholder="e.g. The person in yellow cap at coordinates [1240, 850, 42, 58]."></textarea>
             </div>
 
-            <div class="form-group">
-              <label class="form-label">Question:</label>
-              <textarea id="qaQuestionInput" class="form-control" rows="2" placeholder="e.g. Where is the person wearing a yellow cap?"></textarea>
-            </div>
-
-            <div class="form-group">
-              <label class="form-label">Answer:</label>
-              <textarea id="qaAnswerInput" class="form-control" rows="2" placeholder="e.g. Near the middle cluster at coordinates (963, 1128)."></textarea>
-            </div>
-
-            <!-- Target Points Selection -->
-            <div class="form-group" style="margin-top: 4px;">
-              <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px;">
-                <label class="form-label">Ground-Truth Target Points:</label>
-                <button id="toggleSelectTargetsBtn" class="btn btn-success" style="padding: 2px 8px; font-size: 0.7rem;">
-                  🎯 Enable Point Picker
+            <!-- Target BBox (Required) -->
+            <div class="form-group" style="margin-top: 4px; padding: 7px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 6px;">
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <label class="form-label" style="color: #34d399; font-weight: 700; margin: 0; font-size: 0.74rem;">
+                  🎯 Target BBox <span style="color:#ef4444;">*</span>:
+                </label>
+                <button id="togglePickTargetBBoxBtn" type="button" class="btn btn-success" style="padding: 2px 8px; font-size: 0.7rem; font-weight:600;">
+                  🎯 Pick Target BBox
                 </button>
               </div>
-
-              <div id="qaTargetChipsContainer" class="qa-targets-row" style="min-height: 28px; padding: 4px; background: var(--bg-secondary); border-radius: 4px;">
-                <!-- Target chips with remove cross -->
+              <div id="qaTargetBBoxContainer" style="margin-top: 5px; font-size: 0.74rem;">
+                <span style="color: var(--text-muted); font-style: italic;">No target bbox selected. Click 'Pick Target BBox' then click a box on canvas.</span>
               </div>
+              <!-- Live Area & Warning Container -->
+              <div id="qaTargetBBoxAlert" style="margin-top: 5px; display: none;"></div>
+            </div>
+
+            <!-- Reference BBoxes (Optional, max 2) -->
+            <div class="form-group" style="margin-top: 4px; padding: 7px; background: rgba(99, 102, 241, 0.08); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: 6px;">
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <label class="form-label" style="color: #a5b4fc; font-weight: 700; margin: 0; font-size: 0.74rem;">
+                  📍 Reference BBoxes (Max 2):
+                </label>
+                <button id="togglePickRefBBoxesBtn" type="button" class="btn" style="padding: 2px 8px; font-size: 0.7rem; background:#4f46e5; color:#fff; font-weight:600;">
+                  📍 Pick Ref BBoxes
+                </button>
+              </div>
+              <div id="qaRefBBoxesContainer" class="qa-targets-row" style="margin-top: 5px; min-height: 24px;">
+                <span style="color: var(--text-muted); font-size: 0.72rem; font-style: italic;">Optional landmark references for Spatial/Relation questions (0/2).</span>
+              </div>
+            </div>
+
+            <!-- Uniqueness Verified Checkbox (Required) -->
+            <div class="form-group" style="margin-top: 6px; padding: 7px 9px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 6px;">
+              <label style="display:flex; align-items:flex-start; gap:8px; cursor:pointer; margin:0; font-size:0.75rem; font-weight:600; color:#fde68a;">
+                <input type="checkbox" id="qaUniquenessVerifiedCheck" style="margin-top:2px; transform:scale(1.2); cursor:pointer;">
+                <span>Uniqueness Verified: Tôi xác nhận Ground-Truth target là <u>DUY NHẤT</u> trong ảnh (không có đối tượng thứ hai gây mơ hồ).</span>
+              </label>
             </div>
 
             <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px;">
               <button id="cancelQABtn" class="btn">Cancel</button>
-              <button id="saveQABtn" class="btn btn-success">Save QA Pair</button>
+              <button id="saveQABtn" class="btn btn-success" style="font-weight:700;">Save QA Sample</button>
             </div>
           </div>
 
@@ -625,6 +666,7 @@
 
         <div style="display: flex; gap: 8px; flex-wrap: wrap;">
           <button id="downloadJsonBtn" class="btn btn-primary">📥 Download Full Benchmark JSON</button>
+          <button id="downloadBBoxSamplesJsonBtn" class="btn" style="background:#059669; color:#fff; font-weight:600;">📦 Download BBox QA Samples JSON (12 Fields)</button>
           <button id="downloadCsvBtn" class="btn">📊 Download Points CSV</button>
           <button id="downloadBBoxesCsvBtn" class="btn">📦 Download BBoxes CSV</button>
           <button id="downloadSingleJsonBtn" class="btn">📄 Download Active Image JSON</button>

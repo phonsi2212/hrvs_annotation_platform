@@ -139,6 +139,27 @@ def init_db():
     qa_cols = {row[1] for row in cur.fetchall()}
     if "target_bbox_ids" not in qa_cols:
         cur.execute("ALTER TABLE qa_annotations ADD COLUMN target_bbox_ids TEXT DEFAULT '[]'")
+    if "density_category" not in qa_cols:
+        cur.execute("ALTER TABLE qa_annotations ADD COLUMN density_category TEXT DEFAULT 'people'")
+    if "question_id" not in qa_cols:
+        cur.execute("ALTER TABLE qa_annotations ADD COLUMN question_id TEXT")
+        cur.execute("UPDATE qa_annotations SET question_id = qa_id WHERE question_id IS NULL")
+    if "question_type" not in qa_cols:
+        cur.execute("ALTER TABLE qa_annotations ADD COLUMN question_type TEXT DEFAULT 'Attribute'")
+        cur.execute("UPDATE qa_annotations SET question_type = 'Attribute' WHERE question_type IS NULL")
+    if "target_group" not in qa_cols:
+        cur.execute("ALTER TABLE qa_annotations ADD COLUMN target_group TEXT DEFAULT 'Same-density'")
+        cur.execute("UPDATE qa_annotations SET target_group = 'Same-density' WHERE target_group IS NULL")
+    if "target_bbox" not in qa_cols:
+        cur.execute("ALTER TABLE qa_annotations ADD COLUMN target_bbox TEXT DEFAULT '{}'")
+    if "reference_bboxes" not in qa_cols:
+        cur.execute("ALTER TABLE qa_annotations ADD COLUMN reference_bboxes TEXT DEFAULT '[]'")
+    if "uniqueness_verified" not in qa_cols:
+        cur.execute("ALTER TABLE qa_annotations ADD COLUMN uniqueness_verified INTEGER DEFAULT 1")
+    if "bbox_area_ratio" not in qa_cols:
+        cur.execute("ALTER TABLE qa_annotations ADD COLUMN bbox_area_ratio REAL DEFAULT 0.0")
+    if "bbox_size_warning" not in qa_cols:
+        cur.execute("ALTER TABLE qa_annotations ADD COLUMN bbox_size_warning TEXT DEFAULT 'ok_small_object'")
 
     # Categories config table (allows users to add/customize category list & colors)
     cur.execute("""

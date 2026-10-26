@@ -560,6 +560,7 @@ export class App {
     const openExportBtn = document.getElementById('openExportBtn');
     const closeExportBtn = document.getElementById('closeExportBtn');
     const downloadJsonBtn = document.getElementById('downloadJsonBtn');
+    const downloadBBoxSamplesJsonBtn = document.getElementById('downloadBBoxSamplesJsonBtn');
     const downloadCsvBtn = document.getElementById('downloadCsvBtn');
     const downloadBBoxesCsvBtn = document.getElementById('downloadBBoxesCsvBtn');
     const downloadSingleJsonBtn = document.getElementById('downloadSingleJsonBtn');
@@ -576,6 +577,11 @@ export class App {
     if (downloadJsonBtn) {
       downloadJsonBtn.addEventListener('click', () => {
         window.location.href = '/api/export/json';
+      });
+    }
+    if (downloadBBoxSamplesJsonBtn) {
+      downloadBBoxSamplesJsonBtn.addEventListener('click', () => {
+        window.location.href = '/api/export/bbox-samples-json';
       });
     }
     if (downloadCsvBtn) {

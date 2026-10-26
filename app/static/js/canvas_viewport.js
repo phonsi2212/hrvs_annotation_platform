@@ -73,6 +73,7 @@ export class CanvasViewport {
     this.selectedBBoxId = null;
     this.hoveredBBoxId = null;
     this.activeQATargetBBoxIds = new Set();
+    this.activeQARefBBoxIds = new Set();
     this.bboxesLocked = false;
     this.bboxTool = 'draw'; // 'draw' | 'select'
     this.drawingBBox = null;
@@ -716,10 +717,13 @@ export class CanvasViewport {
     this.requestOverlayRender();
   }
 
-  setActiveQATargets(targetIds, targetBBoxIds) {
+  setActiveQATargets(targetIds, targetBBoxIds, refBBoxIds) {
     this.activeQATargetIds = new Set(targetIds || []);
     if (targetBBoxIds !== undefined) {
       this.activeQATargetBBoxIds = new Set(targetBBoxIds || []);
+    }
+    if (refBBoxIds !== undefined) {
+      this.activeQARefBBoxIds = new Set(refBBoxIds || []);
     }
     this.renderMinimapDots();
     this.requestOverlayRender();
@@ -1053,6 +1057,7 @@ export class CanvasViewport {
       const isSelected = bb.bbox_id === this.selectedBBoxId;
       const isHovered = bb.bbox_id === this.hoveredBBoxId;
       const isQATarget = this.activeQATargetBBoxIds.has(bb.bbox_id);
+      const isQARef = this.activeQARefBBoxIds && this.activeQARefBBoxIds.has(bb.bbox_id);
       const isDraggingThis = this.draggingBBox && this.draggingBBox.bbox === bb;
       const baseColor = bb.color || "#EF4444";
 
@@ -1104,9 +1109,12 @@ export class CanvasViewport {
 
         this._renderTopCenterBanner(ctx, isLarge, pctStr, Math.round(bb.width), Math.round(bb.height));
       } else {
-        // Interior fill for selected / hovered / QA target
+        // Interior fill for selected / hovered / QA target / QA ref
         if (isQATarget) {
-          ctx.fillStyle = "rgba(16, 185, 129, 0.22)";
+          ctx.fillStyle = "rgba(16, 185, 129, 0.28)";
+          ctx.fillRect(r.x, r.y, r.w, r.h);
+        } else if (isQARef) {
+          ctx.fillStyle = "rgba(99, 102, 241, 0.22)";
           ctx.fillRect(r.x, r.y, r.w, r.h);
         } else if (isSelected) {
           ctx.fillStyle = !isSmall ? "rgba(239, 68, 68, 0.20)" : "rgba(251, 191, 36, 0.14)";
@@ -1118,23 +1126,30 @@ export class CanvasViewport {
 
         // Border stroke
         ctx.beginPath();
-        if (!isBBoxMode && !isQAMode && !isSelected) {
+        if (!isBBoxMode && !isQAMode && !isSelected && !isQATarget && !isQARef) {
           ctx.setLineDash([4, 3]);
           ctx.globalAlpha = 0.65;
+        } else if (isQARef) {
+          ctx.setLineDash([5, 4]);
+          ctx.globalAlpha = 1.0;
         } else {
           ctx.setLineDash([]);
           ctx.globalAlpha = 1.0;
         }
-        ctx.strokeStyle = isQATarget ? "#10b981" : (isSelected ? (!isSmall ? "#ef4444" : "#fbbf24") : (isHovered ? "#ffffff" : baseColor));
-        ctx.lineWidth = (isSelected || isQATarget) ? 2.5 : (isHovered ? 2.0 : 1.75);
+        ctx.strokeStyle = isQATarget ? "#10b981" : (isQARef ? "#6366f1" : (isSelected ? (!isSmall ? "#ef4444" : "#fbbf24") : (isHovered ? "#ffffff" : baseColor)));
+        ctx.lineWidth = isQATarget ? 3.0 : (isQARef ? 2.5 : ((isSelected) ? 2.5 : (isHovered ? 2.0 : 1.75)));
         ctx.strokeRect(r.x, r.y, r.w, r.h);
         ctx.setLineDash([]);
         ctx.globalAlpha = 1.0;
 
         // Label badge at top-left (in bbox/qa mode, or when selected/hovered)
-        if (isBBoxMode || isSelected || isHovered || isQATarget) {
+        if (isBBoxMode || isSelected || isHovered || isQATarget || isQARef) {
           let labelText;
-          if (isSelected || isHovered) {
+          if (isQATarget) {
+            labelText = `🎯 Target · ${bb.bbox_id} (${pctStr}%)`;
+          } else if (isQARef) {
+            labelText = `📍 Ref · ${bb.bbox_id} · ${bb.category}`;
+          } else if (isSelected || isHovered) {
             labelText = !isSmall
               ? `⚠️ ${bb.bbox_id} · ${bb.category} (${pctStr}% ≥ 0.1% LARGE)`
               : `${bb.bbox_id} · ${bb.category} (${pctStr}% · S)`;
@@ -1146,12 +1161,12 @@ export class CanvasViewport {
 
           const padX = 6;
           const badgeH = 18;
-          ctx.font = !isSmall && isSelected ? "bold 10px JetBrains Mono, monospace" : "600 10px JetBrains Mono, monospace";
+          ctx.font = (isQATarget || isQARef || (!isSmall && isSelected)) ? "bold 10px JetBrains Mono, monospace" : "600 10px JetBrains Mono, monospace";
           const textW = ctx.measureText(labelText).width;
           const badgeW = textW + padX * 2;
           const badgeY = r.y >= badgeH + 2 ? r.y - badgeH : r.y;
 
-          ctx.fillStyle = isQATarget ? "#059669" : (isSelected ? (!isSmall ? "#dc2626" : "#d97706") : (!isSmall ? "#b91c1c" : baseColor));
+          ctx.fillStyle = isQATarget ? "#059669" : (isQARef ? "#4f46e5" : (isSelected ? (!isSmall ? "#dc2626" : "#d97706") : (!isSmall ? "#b91c1c" : baseColor)));
           ctx.fillRect(r.x, badgeY, badgeW, badgeH);
           ctx.fillStyle = "#ffffff";
           ctx.fillText(labelText, r.x + padX, badgeY + badgeH / 2);

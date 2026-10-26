@@ -61,21 +61,39 @@ class BBoxOut(BBoxBase):
     updated_at: str
 
 class QAPairBase(BaseModel):
-    task_type: str = "Visual Search"
+    task_type: Optional[str] = "Visual Search"
+    density_category: str = "people"  # "people" | "animal" | "vehicle"
+    question_id: Optional[str] = None
+    question_type: str = "Attribute"  # "Attribute" | "Spatial" | "Relation"
+    target_group: str = "Same-density"  # "Same-density" | "Different-density"
     question: str
     answer: str
     target_point_ids: List[str] = Field(default_factory=list)
     target_bbox_ids: List[str] = Field(default_factory=list)
+    target_bbox: Optional[Dict[str, Any]] = None
+    reference_bboxes: List[Dict[str, Any]] = Field(default_factory=list)
+    uniqueness_verified: bool = True
+    bbox_area_ratio: float = 0.0
+    bbox_size_warning: str = "ok_small_object"
 
 class QAPairCreate(QAPairBase):
     qa_id: Optional[str] = None
 
 class QAPairUpdate(BaseModel):
     task_type: Optional[str] = None
+    density_category: Optional[str] = None
+    question_id: Optional[str] = None
+    question_type: Optional[str] = None
+    target_group: Optional[str] = None
     question: Optional[str] = None
     answer: Optional[str] = None
     target_point_ids: Optional[List[str]] = None
     target_bbox_ids: Optional[List[str]] = None
+    target_bbox: Optional[Dict[str, Any]] = None
+    reference_bboxes: Optional[List[Dict[str, Any]]] = None
+    uniqueness_verified: Optional[bool] = None
+    bbox_area_ratio: Optional[float] = None
+    bbox_size_warning: Optional[str] = None
 
 class QAPairOut(QAPairBase):
     qa_id: str
@@ -187,21 +205,56 @@ def build_export_data(conn, image_id: Optional[str] = None) -> Dict[str, Any]:
         qa_rows = cur.fetchall()
         qa_list = []
         for q in qa_rows:
+            q_keys = q.keys()
             try:
                 target_ids = json.loads(q["target_point_ids"]) if q["target_point_ids"] else []
             except Exception:
                 target_ids = []
             try:
-                target_b_ids = json.loads(q["target_bbox_ids"]) if "target_bbox_ids" in q.keys() and q["target_bbox_ids"] else []
+                target_b_ids = json.loads(q["target_bbox_ids"]) if "target_bbox_ids" in q_keys and q["target_bbox_ids"] else []
             except Exception:
                 target_b_ids = []
+
+            # Target BBox
+            tb = {}
+            if "target_bbox" in q_keys and q["target_bbox"]:
+                try:
+                    tb = json.loads(q["target_bbox"])
+                except Exception:
+                    tb = {}
+            if not tb and target_b_ids:
+                matched_b = next((b for b in bboxes_list if b["bbox_id"] == target_b_ids[0]), None)
+                if matched_b:
+                    tb = matched_b
+
+            # Reference BBoxes
+            ref_b = []
+            if "reference_bboxes" in q_keys and q["reference_bboxes"]:
+                try:
+                    ref_b = json.loads(q["reference_bboxes"])
+                except Exception:
+                    ref_b = []
+
+            area_ratio = float(q["bbox_area_ratio"]) if "bbox_area_ratio" in q_keys and q["bbox_area_ratio"] is not None else (tb.get("area_ratio", 0.0) if tb else 0.0)
+            size_warn = q["bbox_size_warning"] if "bbox_size_warning" in q_keys and q["bbox_size_warning"] else ("warning_large_object" if area_ratio >= 0.001 else "ok_small_object")
+
             qa_list.append({
                 "qa_id": q["qa_id"],
+                "image_id": img_id,
+                "density_category": q["density_category"] if "density_category" in q_keys and q["density_category"] else "people",
+                "question_id": q["question_id"] if "question_id" in q_keys and q["question_id"] else q["qa_id"],
+                "question_type": q["question_type"] if "question_type" in q_keys and q["question_type"] else "Attribute",
+                "target_group": q["target_group"] if "target_group" in q_keys and q["target_group"] else "Same-density",
                 "task_type": q["task_type"],
                 "question": q["question"],
                 "answer": q["answer"],
                 "target_point_ids": target_ids,
-                "target_bbox_ids": target_b_ids
+                "target_bbox_ids": target_b_ids,
+                "target_bbox": tb,
+                "reference_bboxes": ref_b[:2],
+                "uniqueness_verified": bool(q["uniqueness_verified"]) if "uniqueness_verified" in q_keys and q["uniqueness_verified"] is not None else True,
+                "bbox_area_ratio": round(area_ratio, 8),
+                "bbox_size_warning": size_warn
             })
 
         img_keys = img.keys()
@@ -231,3 +284,81 @@ def build_export_data(conn, image_id: Optional[str] = None) -> Dict[str, Any]:
         "total_images": len(images_export),
         "images": images_export
     }
+
+def build_bbox_samples_export_data(conn, image_id: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Builds the exact 12-field BBox annotation sample JSON array"""
+    import sqlite3
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    if image_id:
+        cur.execute("SELECT * FROM qa_annotations WHERE image_id = ? ORDER BY qa_id ASC", (image_id,))
+    else:
+        cur.execute("SELECT * FROM qa_annotations ORDER BY image_id ASC, qa_id ASC")
+
+    rows = cur.fetchall()
+    cur.execute("SELECT * FROM bboxes")
+    bb_lookup = {b["bbox_id"]: dict(b) for b in cur.fetchall()}
+
+    samples = []
+    for q in rows:
+        img_id = q["image_id"]
+        q_keys = q.keys()
+
+        # Target BBox
+        tb = {}
+        if "target_bbox" in q_keys and q["target_bbox"]:
+            try:
+                tb = json.loads(q["target_bbox"])
+            except Exception:
+                tb = {}
+        if not tb and "target_bbox_ids" in q_keys and q["target_bbox_ids"]:
+            try:
+                tb_ids = json.loads(q["target_bbox_ids"])
+                if tb_ids and tb_ids[0] in bb_lookup:
+                    b = bb_lookup[tb_ids[0]]
+                    w_norm = round(float(b["width_norm"]), 6)
+                    h_norm = round(float(b["height_norm"]), 6)
+                    tb = {
+                        "bbox_id": b["bbox_id"],
+                        "category": b["category"],
+                        "x": round(float(b["x"]), 2),
+                        "y": round(float(b["y"]), 2),
+                        "width": round(float(b["width"]), 2),
+                        "height": round(float(b["height"]), 2),
+                        "x_norm": round(float(b["x_norm"]), 6),
+                        "y_norm": round(float(b["y_norm"]), 6),
+                        "width_norm": w_norm,
+                        "height_norm": h_norm,
+                        "area_ratio": round(w_norm * h_norm, 8)
+                    }
+            except Exception:
+                pass
+
+        # Reference BBoxes
+        ref_b = []
+        if "reference_bboxes" in q_keys and q["reference_bboxes"]:
+            try:
+                ref_b = json.loads(q["reference_bboxes"])
+            except Exception:
+                ref_b = []
+
+        area_ratio = float(q["bbox_area_ratio"]) if "bbox_area_ratio" in q_keys and q["bbox_area_ratio"] is not None else (tb.get("area_ratio", 0.0) if tb else 0.0)
+        size_warn = q["bbox_size_warning"] if "bbox_size_warning" in q_keys and q["bbox_size_warning"] else ("warning_large_object" if area_ratio >= 0.001 else "ok_small_object")
+
+        samples.append({
+            "image_id": img_id,
+            "density_category": q["density_category"] if "density_category" in q_keys and q["density_category"] else "people",
+            "question_id": q["question_id"] if "question_id" in q_keys and q["question_id"] else q["qa_id"],
+            "question_type": q["question_type"] if "question_type" in q_keys and q["question_type"] else "Attribute",
+            "target_group": q["target_group"] if "target_group" in q_keys and q["target_group"] else "Same-density",
+            "question": q["question"],
+            "answer": q["answer"],
+            "target_bbox": tb,
+            "reference_bboxes": ref_b[:2],
+            "uniqueness_verified": bool(q["uniqueness_verified"]) if "uniqueness_verified" in q_keys and q["uniqueness_verified"] is not None else True,
+            "bbox_area_ratio": round(area_ratio, 8),
+            "bbox_size_warning": size_warn
+        })
+
+    return samples

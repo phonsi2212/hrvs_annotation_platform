@@ -21,7 +21,8 @@ from app.schemas import (
     PointCreate, PointUpdate, PointOut,
     BBoxCreate, BBoxUpdate, BBoxOut,
     QAPairCreate, QAPairUpdate, QAPairOut,
-    ImageUpdate, CategoryModel, ImportFolderRequest, DatasetImportRequest, build_export_data
+    ImageUpdate, CategoryModel, ImportFolderRequest, DatasetImportRequest,
+    build_export_data, build_bbox_samples_export_data
 )
 from app.annotation_store import (
     ANNOTATIONS_DIR, sync_image_annotation_file,
@@ -270,22 +271,54 @@ def get_image_details(image_id: str, conn: sqlite3.Connection = Depends(get_db))
     qa_rows = cur.fetchall()
     qa_list = []
     for q in qa_rows:
+        q_keys = q.keys()
         try:
             t_ids = json.loads(q["target_point_ids"]) if q["target_point_ids"] else []
         except Exception:
             t_ids = []
         try:
-            t_b_ids = json.loads(q["target_bbox_ids"]) if "target_bbox_ids" in q.keys() and q["target_bbox_ids"] else []
+            t_b_ids = json.loads(q["target_bbox_ids"]) if "target_bbox_ids" in q_keys and q["target_bbox_ids"] else []
         except Exception:
             t_b_ids = []
+
+        tb = {}
+        if "target_bbox" in q_keys and q["target_bbox"]:
+            try:
+                tb = json.loads(q["target_bbox"])
+            except Exception:
+                tb = {}
+        if not tb and t_b_ids:
+            matched_b = next((b for b in bboxes if b["bbox_id"] == t_b_ids[0]), None)
+            if matched_b:
+                tb = matched_b
+
+        ref_b = []
+        if "reference_bboxes" in q_keys and q["reference_bboxes"]:
+            try:
+                ref_b = json.loads(q["reference_bboxes"])
+            except Exception:
+                ref_b = []
+
+        area_ratio = float(q["bbox_area_ratio"]) if "bbox_area_ratio" in q_keys and q["bbox_area_ratio"] is not None else (tb.get("area_ratio", 0.0) if tb else 0.0)
+        size_warn = q["bbox_size_warning"] if "bbox_size_warning" in q_keys and q["bbox_size_warning"] else ("warning_large_object" if area_ratio >= 0.001 else "ok_small_object")
+
         qa_list.append({
             "qa_id": q["qa_id"],
             "image_id": q["image_id"],
+            "density_category": q["density_category"] if "density_category" in q_keys and q["density_category"] else "people",
+            "question_id": q["question_id"] if "question_id" in q_keys and q["question_id"] else q["qa_id"],
+            "question_type": q["question_type"] if "question_type" in q_keys and q["question_type"] else "Attribute",
+            "target_group": q["target_group"] if "target_group" in q_keys and q["target_group"] else "Same-density",
             "task_type": q["task_type"],
             "question": q["question"],
             "answer": q["answer"],
             "target_point_ids": t_ids,
             "target_bbox_ids": t_b_ids,
+            "target_bbox": tb,
+            "reference_bboxes": ref_b[:2],
+            "uniqueness_verified": bool(q["uniqueness_verified"]) if "uniqueness_verified" in q_keys and q["uniqueness_verified"] is not None else True,
+            "bbox_area_ratio": round(area_ratio, 8),
+            "bbox_size_warning": size_warn,
             "created_at": q["created_at"],
             "updated_at": q["updated_at"]
         })
@@ -1185,7 +1218,7 @@ def clear_image_bboxes(image_id: str, conn: sqlite3.Connection = Depends(get_db)
 @app.post("/api/images/{image_id}/qa")
 def add_qa_pair(image_id: str, payload: QAPairCreate, conn: sqlite3.Connection = Depends(get_db)):
     cur = conn.cursor()
-    cur.execute("SELECT qa_status FROM images WHERE image_id = ?", (image_id,))
+    cur.execute("SELECT qa_status, density_group FROM images WHERE image_id = ?", (image_id,))
     img = cur.fetchone()
     if not img:
         raise HTTPException(status_code=404, detail="Image not found")
@@ -1195,23 +1228,47 @@ def add_qa_pair(image_id: str, payload: QAPairCreate, conn: sqlite3.Connection =
         raise HTTPException(status_code=409, detail="Image QA is completed (locked). Set QA status to todo / in_progress to edit Q&A pairs.")
 
     now = utc_now_iso()
+    cur.execute("SELECT COUNT(*) FROM qa_annotations WHERE image_id = ?", (image_id,))
+    count = cur.fetchone()[0] + 1
+
+    question_id = payload.question_id or f"{image_id}_q{count:02d}"
     if payload.qa_id:
         qa_id = payload.qa_id
     else:
-        cur.execute("SELECT COUNT(*) FROM qa_annotations WHERE image_id = ?", (image_id,))
-        count = cur.fetchone()[0] + 1
         qa_id = f"qa_{count:03d}"
         cur.execute("SELECT 1 FROM qa_annotations WHERE qa_id = ?", (qa_id,))
         if cur.fetchone():
             qa_id = f"qa_{int(datetime.now().timestamp() * 1000) % 1000000:06d}"
 
+    density_category = payload.density_category if payload.density_category in ("people", "animal", "vehicle") else "people"
+    question_type = payload.question_type or "Attribute"
+    target_group = payload.target_group or ("Same-density" if img["density_group"] == "same_object" else "Different-density")
+
     t_ids_json = json.dumps(payload.target_point_ids)
     t_b_ids_json = json.dumps(payload.target_bbox_ids)
+    t_bbox_json = json.dumps(payload.target_bbox or {})
+    ref_bboxes_json = json.dumps(payload.reference_bboxes or [])
+    uniqueness_verified = 1 if payload.uniqueness_verified else 0
+
+    area_ratio = float(payload.bbox_area_ratio or 0.0)
+    if area_ratio == 0.0 and payload.target_bbox and "area_ratio" in payload.target_bbox:
+        area_ratio = float(payload.target_bbox["area_ratio"])
+    size_warning = payload.bbox_size_warning or ("warning_large_object" if area_ratio >= 0.001 else "ok_small_object")
 
     cur.execute("""
-        INSERT INTO qa_annotations (qa_id, image_id, task_type, question, answer, target_point_ids, target_bbox_ids, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (qa_id, image_id, payload.task_type, payload.question, payload.answer, t_ids_json, t_b_ids_json, now, now))
+        INSERT INTO qa_annotations (
+            qa_id, image_id, density_category, question_id, question_type, target_group,
+            task_type, question, answer, target_point_ids, target_bbox_ids,
+            target_bbox, reference_bboxes, uniqueness_verified, bbox_area_ratio, bbox_size_warning,
+            created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        qa_id, image_id, density_category, question_id, question_type, target_group,
+        payload.task_type or "Visual Search", payload.question, payload.answer,
+        t_ids_json, t_b_ids_json, t_bbox_json, ref_bboxes_json,
+        uniqueness_verified, area_ratio, size_warning, now, now
+    ))
 
     # Auto-derive: an image that now carries a question & answer becomes QA-completed
     qa_status = img["qa_status"]
@@ -1225,11 +1282,20 @@ def add_qa_pair(image_id: str, payload: QAPairCreate, conn: sqlite3.Connection =
     return {
         "qa_id": qa_id,
         "image_id": image_id,
+        "density_category": density_category,
+        "question_id": question_id,
+        "question_type": question_type,
+        "target_group": target_group,
         "task_type": payload.task_type,
         "question": payload.question,
         "answer": payload.answer,
         "target_point_ids": payload.target_point_ids,
         "target_bbox_ids": payload.target_bbox_ids,
+        "target_bbox": payload.target_bbox or {},
+        "reference_bboxes": payload.reference_bboxes or [],
+        "uniqueness_verified": bool(uniqueness_verified),
+        "bbox_area_ratio": area_ratio,
+        "bbox_size_warning": size_warning,
         "qa_status": qa_status,
         "created_at": now,
         "updated_at": now
@@ -1254,6 +1320,19 @@ def update_qa_pair(qa_id: str, payload: QAPairUpdate, conn: sqlite3.Connection =
     updates = []
     params = []
 
+    if payload.density_category is not None:
+        if payload.density_category in ("people", "animal", "vehicle"):
+            updates.append("density_category = ?")
+            params.append(payload.density_category)
+    if payload.question_id is not None:
+        updates.append("question_id = ?")
+        params.append(payload.question_id)
+    if payload.question_type is not None:
+        updates.append("question_type = ?")
+        params.append(payload.question_type)
+    if payload.target_group is not None:
+        updates.append("target_group = ?")
+        params.append(payload.target_group)
     if payload.task_type is not None:
         updates.append("task_type = ?")
         params.append(payload.task_type)
@@ -1269,6 +1348,21 @@ def update_qa_pair(qa_id: str, payload: QAPairUpdate, conn: sqlite3.Connection =
     if payload.target_bbox_ids is not None:
         updates.append("target_bbox_ids = ?")
         params.append(json.dumps(payload.target_bbox_ids))
+    if payload.target_bbox is not None:
+        updates.append("target_bbox = ?")
+        params.append(json.dumps(payload.target_bbox))
+    if payload.reference_bboxes is not None:
+        updates.append("reference_bboxes = ?")
+        params.append(json.dumps(payload.reference_bboxes))
+    if payload.uniqueness_verified is not None:
+        updates.append("uniqueness_verified = ?")
+        params.append(1 if payload.uniqueness_verified else 0)
+    if payload.bbox_area_ratio is not None:
+        updates.append("bbox_area_ratio = ?")
+        params.append(float(payload.bbox_area_ratio))
+    if payload.bbox_size_warning is not None:
+        updates.append("bbox_size_warning = ?")
+        params.append(payload.bbox_size_warning)
 
     if updates:
         updates.append("updated_at = ?")
@@ -1499,5 +1593,27 @@ def export_bboxes_csv(conn: sqlite3.Connection = Depends(get_db)):
     return StreamingResponse(
         io.BytesIO(("﻿" + csv_data).encode("utf-8")),
         media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+@app.get("/api/export/bbox-samples-json")
+def export_bbox_samples_json(conn: sqlite3.Connection = Depends(get_db)):
+    data = build_bbox_samples_export_data(conn)
+    filename = f"hrvs_bbox_samples_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    save_path = os.path.join(EXPORT_DIR, filename)
+    with open(save_path, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)
+
+    return JSONResponse(
+        content=data,
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+@app.get("/api/images/{image_id}/export/bbox-samples-json")
+def export_single_image_bbox_samples_json(image_id: str, conn: sqlite3.Connection = Depends(get_db)):
+    data = build_bbox_samples_export_data(conn, image_id=image_id)
+    filename = f"{image_id}_bbox_samples.json"
+    return JSONResponse(
+        content=data,
         headers={"Content-Disposition": f"attachment; filename={filename}"}
     )

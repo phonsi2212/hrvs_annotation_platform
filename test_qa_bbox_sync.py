@@ -39,13 +39,17 @@ class QABBoxSyncTest(unittest.TestCase):
             self.assertEqual(target['bbox_size_warning'], 'warning_large_object')
             self.assertEqual(json.loads(reference['reference_bboxes'])[0]['width_norm'], .1)
             self.assertEqual(json.loads(reference['target_bbox'])['bbox_id'], 'other')
+            update_bbox('box', BBoxUpdate(category='vehicle'), conn)
+            for row in conn.execute('SELECT * FROM qa_annotations'):
+                linked = json.loads(row['target_bbox']) if row['qa_id'] == 'target' else json.loads(row['reference_bboxes'])[0]
+                self.assertEqual(linked['category'], 'vehicle')
             delete_bbox('box', conn)
             target, reference = conn.execute('SELECT * FROM qa_annotations ORDER BY qa_id DESC').fetchall()
             self.assertIsNone(json.loads(target['target_bbox']))
             self.assertEqual(json.loads(target['target_bbox_ids']), [])
             self.assertEqual(target['bbox_area_ratio'], 0)
             self.assertEqual(json.loads(reference['reference_bboxes']), [])
-            self.assertEqual(sync.call_count, 2)
+            self.assertEqual(sync.call_count, 3)
 
 
 if __name__ == '__main__':

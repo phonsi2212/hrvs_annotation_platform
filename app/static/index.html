@@ -533,8 +533,16 @@
 
             <!-- Target BBox (Required) -->
             <div class="form-group">
-              <label for="qaBBoxCategorySelect" class="form-label" style="font-size:0.72rem;">Category for new BBoxes:</label>
-              <select id="qaBBoxCategorySelect" class="form-control"></select>
+              <label for="qaBBoxCategorySelect" class="form-label" style="font-size:0.72rem;">BBox class <span id="qaSelectedBBoxId"></span></label>
+              <div style="display:flex; gap:5px;">
+                <input id="qaBBoxCategorySelect" class="form-control" list="qaBBoxClassSuggestions" placeholder="Gõ class name rồi Enter…" autocomplete="off" style="min-width:0; flex:1;">
+                <datalist id="qaBBoxClassSuggestions"></datalist>
+                <input id="qaCustomClassColor" type="color" value="#10b981" aria-label="Custom class color" style="width:32px; height:30px; padding:0;">
+                <button id="qaAddCustomClassBtn" type="button" class="btn">Áp dụng</button>
+              </div>
+              <div id="qaBBoxClassPalette" class="category-grid" style="margin-top:5px; max-height:110px; overflow-y:auto;"></div>
+              <div style="margin-top:5px; font-size:0.72rem; color:var(--text-muted);">Chọn bbox rồi gõ tên class và Enter. Tên mới tự tạo custom class; class có sẵn hiện trong gợi ý.</div>
+              <button id="qaDeselectBBoxBtn" type="button" class="btn" style="margin-top:5px; font-size:0.72rem;">Bỏ chọn bbox</button>
               <button id="qaDeleteBBoxBtn" type="button" class="btn btn-danger" style="margin-top:5px; font-size:0.72rem;">Delete selected BBox</button>
               <div id="qaBBoxDrawHint" style="margin-top:5px; font-size:0.72rem; color:var(--text-muted);"></div>
             </div>

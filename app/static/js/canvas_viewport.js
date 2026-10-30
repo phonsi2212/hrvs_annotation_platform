@@ -651,7 +651,7 @@ export class CanvasViewport {
 
     // Keyboard Space & H key listeners
     window.addEventListener('keydown', (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
 
       if (e.code === 'Space' && !this.isSpacePressed) {
         this.isSpacePressed = true;

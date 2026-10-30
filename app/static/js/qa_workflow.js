@@ -28,6 +28,8 @@ export class QAWorkflow {
     this.pickingMode = null; // 'target' | 'reference' | null
     this.locked = false;
     this.creatingBBox = false;
+    this.bboxClass = app.bboxWorkflow.activeCategory;
+    this.addingClass = false;
 
     this.initElements();
     this.initEvents();
@@ -52,10 +54,33 @@ export class QAWorkflow {
     // BBox Picking controls
     this.togglePickTargetBBoxBtn = document.getElementById('togglePickTargetBBoxBtn');
     this.qaTargetBBoxContainer = document.getElementById('qaTargetBBoxContainer');
+    this.qaTargetBBoxContainer?.addEventListener('click', e => {
+      if (!e.target.closest('button')) this.selectBBoxForClass(this.editingQA?.target_bbox?.bbox_id);
+    });
+    if (this.qaTargetBBoxContainer) this.qaTargetBBoxContainer.title = 'Click to select this BBox and edit its class';
     this.qaTargetBBoxAlert = document.getElementById('qaTargetBBoxAlert');
     this.togglePickRefBBoxesBtn = document.getElementById('togglePickRefBBoxesBtn');
     this.qaRefBBoxesContainer = document.getElementById('qaRefBBoxesContainer');
     this.qaBBoxCategorySelect = document.getElementById('qaBBoxCategorySelect');
+    this.qaSelectedBBoxId = document.getElementById('qaSelectedBBoxId');
+    this.qaBBoxClassPalette = document.getElementById('qaBBoxClassPalette');
+    this.qaCustomClassInput = this.qaBBoxCategorySelect;
+    this.qaBBoxClassSuggestions = document.getElementById('qaBBoxClassSuggestions');
+    this.qaCustomClassColor = document.getElementById('qaCustomClassColor');
+    this.qaAddCustomClassBtn = document.getElementById('qaAddCustomClassBtn');
+    this.qaBBoxCategorySelect?.addEventListener('change', () => {
+      const name = this.qaBBoxCategorySelect.value.trim().toLowerCase().replace(/\s+/g, '_');
+      if (this.app.pointWorkflow.categories.some(c => c.name === name)) this.useBBoxClass(name);
+    });
+    this.qaAddCustomClassBtn?.addEventListener('click', () => this.addCustomBBoxClass());
+    this.qaCustomClassInput?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); this.addCustomBBoxClass(); }
+    });
+    document.getElementById('qaDeselectBBoxBtn')?.addEventListener('click', () => {
+      this.viewport.selectedBBoxId = null;
+      this.renderSelectedBBoxClass();
+      this.viewport.requestOverlayRender();
+    });
     this.qaBBoxDrawHint = document.getElementById('qaBBoxDrawHint');
     this.qaDeleteBBoxBtn = document.getElementById('qaDeleteBBoxBtn');
     this.qaDeleteBBoxBtn?.addEventListener('click', () => this.deleteSelectedBBox());
@@ -98,7 +123,7 @@ export class QAWorkflow {
   }
 
   initEvents() {
-    this.viewport.canEditQABBox = () => !!(this.editingQA && !this.locked && !this.app.bboxLocked && !this.creatingBBox);
+    this.viewport.canEditQABBox = () => !!(this.editingQA && !this.locked && !this.app.bboxLocked && !this.creatingBBox && !this.addingClass);
     const originalChangeEnd = this.viewport.onBBoxChangeEnd;
     this.viewport.onBBoxChangeEnd = async (bb, original) => {
       if (this.app.currentWorkflow !== 'qa') return originalChangeEnd?.(bb, original);
@@ -117,6 +142,7 @@ export class QAWorkflow {
         if (this.app.activeImage?.image_id === imageId) this.syncBBoxInQA(bb.bbox_id, bb);
       } finally {
         this.creatingBBox = false;
+        this.renderSelectedBBoxClass();
         this.viewport.requestOverlayRender();
       }
     };
@@ -130,12 +156,12 @@ export class QAWorkflow {
     this.viewport.isPickingQABBox = () => !!(this.editingQA && this.pickingMode && !this.locked);
     this.viewport.canDrawQABBox = () => !!(
       this.editingQA && this.pickingMode && !this.locked &&
-      !this.app.bboxLocked && !this.creatingBBox
+      !this.app.bboxLocked && !this.creatingBBox && !this.addingClass
     );
     const originalDraftStyle = this.viewport.getActiveBBoxDraftStyle;
     this.viewport.getActiveBBoxDraftStyle = () => {
       if (this.app.currentWorkflow === 'qa' && this.editingQA) {
-        const category = this.qaBBoxCategorySelect?.value || this.app.bboxWorkflow.activeCategory;
+        const category = this.bboxClass || this.app.bboxWorkflow.activeCategory;
         const cat = this.app.pointWorkflow.categories.find(c => c.name === category);
         return { category, color: cat?.color || this.app.bboxWorkflow.activeColor };
       }
@@ -150,19 +176,25 @@ export class QAWorkflow {
     // When BBox is clicked in QA mode
     const origBBoxClick = this.viewport.onBBoxClick;
     this.viewport.onBBoxClick = (bb, e) => {
+      if (this.app.currentWorkflow === 'qa' && !bb) this.renderSelectedBBoxClass();
       if (this.app.currentWorkflow === 'qa' && this.editingQA && !this.locked && !this.creatingBBox && bb) {
         this.viewport.selectedBBoxId = bb.bbox_id;
+        this.bboxClass = bb.category;
+        this.renderSelectedBBoxClass();
         this.viewport.requestOverlayRender();
         if (this.pickingMode === 'target') {
           this.setTargetBBox(bb);
           this.pickingMode = null;
           this.updatePickingButtons();
+          this.focusBBoxClassInput();
           return;
         } else if (this.pickingMode === 'reference') {
           this.toggleRefBBox(bb);
           this.updatePickingButtons();
+          this.focusBBoxClassInput();
           return;
         }
+        this.focusBBoxClassInput();
       }
       if (origBBoxClick) origBBoxClick(bb, e);
     };
@@ -199,6 +231,7 @@ export class QAWorkflow {
   }
 
   updatePickingButtons() {
+    this.renderSelectedBBoxClass();
     this.viewport.drawingBBox = null;
     this.viewport.requestOverlayRender();
     if (this.qaBBoxDrawHint) {
@@ -237,7 +270,138 @@ export class QAWorkflow {
     }
   }
 
+  renderSelectedBBoxClass() {
+    const select = this.qaBBoxCategorySelect;
+    if (!select) return;
+    const bb = this.viewport.bboxes.find(b => b.bbox_id === this.viewport.selectedBBoxId);
+    if (this.qaSelectedBBoxId) this.qaSelectedBBoxId.textContent = bb ? `— #${bb.bbox_id}` : '— bbox mới';
+    this.qaBBoxClassSuggestions?.replaceChildren();
+    const categories = [...this.app.pointWorkflow.categories];
+    if (bb && !categories.some(c => c.name === bb.category)) categories.push({ name: bb.category });
+    const currentClass = bb?.category || this.bboxClass;
+    if (!categories.some(c => c.name === currentClass) && categories.length) this.bboxClass = categories[0].name;
+    categories.forEach(cat => {
+        const option = document.createElement('option');
+        option.value = cat.name;
+        option.textContent = cat.name;
+        this.qaBBoxClassSuggestions?.appendChild(option);
+    });
+    select.value = bb?.category || this.bboxClass || '';
+    const disabled = !this.viewport.canEditQABBox() || !!this.viewport.draggingBBox || this.addingClass;
+    select.disabled = disabled;
+    if (this.qaAddCustomClassBtn) this.qaAddCustomClassBtn.disabled = disabled;
+    if (this.qaDeleteBBoxBtn) this.qaDeleteBBoxBtn.disabled = disabled || !bb;
+    if (this.qaBBoxClassPalette) {
+      this.qaBBoxClassPalette.replaceChildren();
+      categories.forEach(cat => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `cat-btn ${cat.name === select.value ? 'active' : ''}`;
+        button.textContent = cat.name;
+        button.style.borderLeft = `4px solid ${cat.color || '#10b981'}`;
+        button.disabled = disabled;
+        button.addEventListener('click', () => this.useBBoxClass(cat.name));
+        this.qaBBoxClassPalette.appendChild(button);
+      });
+    }
+  }
+
+  async useBBoxClass(category) {
+    if (!this.viewport.canEditQABBox() || this.viewport.draggingBBox || this.addingClass) return;
+    if (!this.app.pointWorkflow.categories.some(c => c.name === category)) return;
+    this.bboxClass = category;
+    await this.changeSelectedBBoxClass(category);
+    this.renderSelectedBBoxClass();
+  }
+
+  selectBBoxForClass(id) {
+    const bb = this.viewport.bboxes.find(b => b.bbox_id === id);
+    if (!bb || !this.editingQA || this.creatingBBox || this.addingClass) return;
+    this.viewport.selectedBBoxId = id;
+    this.bboxClass = bb.category;
+    this.pickingMode = null;
+    this.updatePickingButtons();
+    this.focusBBoxClassInput();
+  }
+
+  focusBBoxClassInput() {
+    if (this.qaBBoxCategorySelect && !this.qaBBoxCategorySelect.disabled) {
+      this.qaBBoxCategorySelect.focus({ preventScroll: true });
+      this.qaBBoxCategorySelect.select();
+    }
+  }
+
+  async addCustomBBoxClass() {
+    if (this.addingClass || !this.viewport.canEditQABBox() || this.viewport.draggingBBox) return;
+    const name = (this.qaCustomClassInput?.value || '').trim().toLowerCase().replace(/\s+/g, '_');
+    if (!name) {
+      this.qaCustomClassInput?.focus();
+      return;
+    }
+    const editor = this.editingQA;
+    const typedName = this.qaCustomClassInput?.value || '';
+    let failed = false;
+    const selectedId = this.viewport.selectedBBoxId;
+    const imageId = this.app.activeImage?.image_id;
+    this.addingClass = true;
+    this.renderSelectedBBoxClass();
+    try {
+      if (!this.app.pointWorkflow.categories.some(c => c.name === name)) {
+        const color = this.qaCustomClassColor?.value || '#10b981';
+        const response = await fetch('/api/categories', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, color, density_group: this.app.activeImage?.density_group || 'mixed_object' })
+        });
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.detail || 'Không thể tạo class');
+        }
+        await this.app.pointWorkflow.loadCategories();
+        if (!this.app.pointWorkflow.categories.some(c => c.name === name)) throw new Error('Không tải được class mới. Vui lòng thử lại.');
+      }
+      if (this.editingQA !== editor || this.app.activeImage?.image_id !== imageId) return;
+      this.addingClass = false;
+      if (this.viewport.selectedBBoxId === selectedId) await this.useBBoxClass(name);
+      else this.bboxClass = name;
+      if (this.qaCustomClassInput) this.qaCustomClassInput.value = '';
+      this.app.showToast(`Class sẵn sàng: ${name}`, 'success');
+    } catch (error) {
+      failed = true;
+      this.app.showToast(error.message || 'Không thể tạo class', 'error');
+    } finally {
+      this.addingClass = false;
+      this.renderSelectedBBoxClass();
+      if (this.editingQA === editor) {
+        if (failed && this.qaCustomClassInput) this.qaCustomClassInput.value = typedName;
+        this.focusBBoxClassInput();
+      }
+    }
+  }
+
+  async changeSelectedBBoxClass(category) {
+    const bb = this.viewport.bboxes.find(b => b.bbox_id === this.viewport.selectedBBoxId);
+    const cat = this.app.pointWorkflow.categories.find(c => c.name === category);
+    if (!bb || !cat || !this.viewport.canEditQABBox() || this.viewport.draggingBBox || bb.category === category) {
+      this.renderSelectedBBoxClass();
+      return;
+    }
+    const imageId = this.app.activeImage?.image_id;
+    this.creatingBBox = true;
+    this.renderSelectedBBoxClass();
+    try {
+      const saved = await this.app.bboxWorkflow.updateBBox(bb.bbox_id, { category: cat.name, color: cat.color });
+      if (saved && this.app.activeImage?.image_id === imageId) {
+        this.syncBBoxInQA(bb.bbox_id, bb);
+        this.app.showToast(`Updated BBox #${bb.bbox_id} class to ${cat.name}`, 'success');
+      }
+    } finally {
+      this.creatingBBox = false;
+      this.renderSelectedBBoxClass();
+    }
+  }
+
   syncBBoxInQA(id, bbox) {
+    this.renderSelectedBBoxClass();
     const sync = qa => {
       if (qa.target_bbox?.bbox_id === id || qa.target_bbox_ids?.includes(id)) {
         qa.target_bbox = bbox ? { ...bbox } : null;
@@ -267,6 +431,7 @@ export class QAWorkflow {
       if (await this.app.bboxWorkflow.deleteBBox(id)) this.syncBBoxInQA(id, null);
     } finally {
       this.creatingBBox = false;
+      this.renderSelectedBBoxClass();
     }
   }
 
@@ -294,6 +459,8 @@ export class QAWorkflow {
       this.updatePickingButtons();
     } finally {
       this.creatingBBox = false;
+      this.renderSelectedBBoxClass();
+      if (this.editingQA === editor) this.focusBBoxClassInput();
     }
   }
 
@@ -468,6 +635,9 @@ export class QAWorkflow {
       chip.style.borderColor = '#6366f1';
       chip.style.background = 'rgba(99, 102, 241, 0.18)';
       chip.style.color = '#c7d2fe';
+      chip.style.cursor = 'pointer';
+      chip.title = 'Click to select this BBox and edit its class';
+      chip.addEventListener('click', () => this.selectBBoxForClass(r.bbox_id));
       chip.innerHTML = `
         📍 ${r.bbox_id} · ${r.category}
         <span class="remove-chip-btn" title="Remove">&times;</span>
@@ -569,18 +739,6 @@ export class QAWorkflow {
   openQAEditor(title) {
     if (!this.qaEditorCard) return;
     this.qaEditorTitle.textContent = title;
-    if (this.qaBBoxCategorySelect) {
-      const cats = this.app.pointWorkflow.categories;
-      this.qaBBoxCategorySelect.replaceChildren();
-      cats.forEach(cat => {
-        const option = document.createElement('option');
-        option.value = cat.name;
-        option.textContent = cat.name;
-        this.qaBBoxCategorySelect.appendChild(option);
-      });
-      this.qaBBoxCategorySelect.value = this.app.bboxWorkflow.activeCategory;
-      if (!this.qaBBoxCategorySelect.value && cats.length) this.qaBBoxCategorySelect.selectedIndex = 0;
-    }
     if (this.qaImageIdBadge && this.app.activeImage) {
       this.qaImageIdBadge.textContent = `Image: ${this.app.activeImage.image_id}`;
     }
@@ -615,7 +773,7 @@ export class QAWorkflow {
 
   async saveQA() {
     if (!this.app.activeImage || !this.editingQA) return;
-    if (this.creatingBBox || this.viewport.draggingBBox) {
+    if (this.creatingBBox || this.addingClass || this.viewport.draggingBBox) {
       this.app.showToast('Please wait for the new bounding box to finish saving.', 'info');
       return;
     }

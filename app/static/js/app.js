@@ -661,7 +661,7 @@ export class App {
 
   initGlobalShortcuts() {
     window.addEventListener('keydown', (e) => {
-      if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+      if (e.target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
 
       // A / ArrowLeft for Previous Image
       if (e.key === 'a' || e.key === 'A' || e.key === 'ArrowLeft') {

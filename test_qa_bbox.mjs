@@ -105,8 +105,96 @@ app.bboxWorkflow.updateBBox = async () => true;
 viewport.bboxes[0].width = 50;
 await viewport.onBBoxChangeEnd(viewport.bboxes[0], { x: 10, y: 10, width: 20, height: 20 });
 assert.equal(qa.editingQA.target_bbox.width, 50);
+// Class changes update target/reference snapshots and use the class color.
+app.pointWorkflow.categories.push({ name: 'vehicle', color: '#00ff00' });
+qa.editingQA.reference_bboxes = [{ bbox_id: 'ref', category: 'person' }];
+qa.qaList = [{ target_bbox: { ...viewport.bboxes[0] }, target_bbox_ids: ['resize'], reference_bboxes: [] }];
+app.bboxWorkflow.updateBBox = async (id, updates) => {
+  Object.assign(viewport.bboxes.find(bb => bb.bbox_id === id), updates);
+  return true;
+};
+await qa.changeSelectedBBoxClass('vehicle');
+assert.equal(viewport.bboxes[0].category, 'vehicle');
+assert.equal(viewport.bboxes[0].color, '#00ff00');
+assert.equal(qa.editingQA.target_bbox.category, 'vehicle');
+assert.equal(qa.qaList[0].target_bbox.category, 'vehicle');
+viewport.bboxes.push({ bbox_id: 'ref', category: 'person' });
+viewport.selectedBBoxId = 'ref';
+await qa.changeSelectedBBoxClass('vehicle');
+assert.equal(qa.editingQA.reference_bboxes[0].category, 'vehicle');
+app.bboxWorkflow.updateBBox = async () => false;
+await qa.changeSelectedBBoxClass('person');
+assert.equal(viewport.bboxes[1].category, 'vehicle');
+qa.locked = true;
+await qa.changeSelectedBBoxClass('person');
+assert.equal(viewport.bboxes[1].category, 'vehicle');
+qa.locked = false;
+viewport.selectedBBoxId = 'resize';
 app.bboxWorkflow.deleteBBox = async () => true;
 await qa.deleteSelectedBBox();
 assert.equal(qa.editingQA.target_bbox, null);
 assert.deepEqual(qa.editingQA.target_bbox_ids, []);
+// One class choice applies to the selected box and subsequent drafts.
+viewport.selectedBBoxId = 'ref';
+app.bboxWorkflow.updateBBox = async (id, updates) => {
+  Object.assign(viewport.bboxes.find(bb => bb.bbox_id === id), updates);
+  return true;
+};
+await qa.useBBoxClass('person');
+assert.equal(viewport.bboxes[1].category, 'person');
+assert.equal(viewport.getActiveBBoxDraftStyle().category, 'person');
+viewport.selectedBBoxId = null;
+await qa.useBBoxClass('vehicle');
+assert.equal(viewport.getActiveBBoxDraftStyle().category, 'vehicle');
+assert.equal(viewport.bboxes[1].category, 'person');
+// Custom classes persist through the API, normalize names, and apply immediately.
+viewport.selectedBBoxId = 'ref';
+qa.qaCustomClassInput = { value: '  Safety Helmet  ', focus() {} };
+qa.qaCustomClassColor = { value: '#123456' };
+let posts = 0;
+globalThis.fetch = async (url, options) => {
+  assert.equal(url, '/api/categories');
+  const payload = JSON.parse(options.body);
+  assert.equal(payload.name, 'safety_helmet');
+  assert.equal(payload.color, '#123456');
+  posts++;
+  return { ok: true };
+};
+app.pointWorkflow.loadCategories = async () => {
+  app.pointWorkflow.categories.push({ name: 'safety_helmet', color: '#123456' });
+};
+await qa.addCustomBBoxClass();
+assert.equal(viewport.bboxes[1].category, 'safety_helmet');
+assert.equal(qa.editingQA.reference_bboxes[0].category, 'safety_helmet');
+assert.equal(qa.qaCustomClassInput.value, '');
+qa.qaCustomClassInput.value = 'Safety Helmet';
+await qa.addCustomBBoxClass();
+assert.equal(posts, 1); // Existing classes are reused without a duplicate POST.
+qa.qaCustomClassInput.value = 'new_class';
+globalThis.fetch = async () => ({ ok: false, json: async () => ({ detail: 'Save failed' }) });
+await qa.addCustomBBoxClass();
+assert.equal(qa.qaCustomClassInput.value, 'new_class');
+assert.equal(qa.addingClass, false);
+assert.equal(viewport.bboxes[1].category, 'safety_helmet');
+// Selecting a bbox focuses an editable name, and Enter applies typed names.
+const inputHandlers = {};
+let focused = 0, textSelected = 0;
+const classInput = {
+  value: '', disabled: false,
+  addEventListener(name, fn) { inputHandlers[name] = fn; },
+  focus() { focused++; }, select() { textSelected++; }
+};
+document.getElementById = id => id === 'qaBBoxCategorySelect' ? classInput : null;
+document.createElement = () => ({});
+const typingQA = new QAWorkflow(app);
+typingQA.editingQA = { reference_bboxes: [] };
+viewport.onBBoxClick(viewport.bboxes[1], {});
+assert.equal(classInput.value, 'safety_helmet');
+assert.equal(focused, 1);
+assert.equal(textSelected, 1);
+classInput.value = 'vehicle';
+inputHandlers.keydown({ key: 'Enter', preventDefault() {} });
+await new Promise(resolve => setImmediate(resolve));
+assert.equal(viewport.bboxes[1].category, 'vehicle');
+assert.equal(classInput.value, 'vehicle');
 console.log('QA bbox interaction checks passed.');

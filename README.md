@@ -18,6 +18,8 @@ A high-performance, browser-based annotation platform specifically engineered fo
   - Real-time inspector for metadata and fine-grained attributes (`color`, `state`, `sub_type`, `note`).
   - Full Undo / Redo support (`Ctrl + Z` / `Ctrl + Y`).
 - **Workflow 2: Question–Answer (QA) Annotation Mode**
+  - **Create BBoxes while composing QA**: Choose a category, activate **Pick Target BBox** or **Pick Ref BBoxes**, then click an existing box or drag to draw a new one. New boxes are saved immediately and linked to the current QA role (up to two references). Hold **Space** to pan. If BBox annotations are completed, unlock them in BBox mode before drawing.
+  - **Edit BBoxes in QA**: While the QA editor is open, click a box to select it, drag its corner/edge handles to resize, or use **Delete selected BBox** / **Delete** to remove it. Changes save immediately and update saved QA target/reference geometry; deleting a target clears its link so a replacement can be picked before saving the sample. QA and BBox must be unlocked to edit boxes.
   - Read-only canvas locks point coordinates to prevent accidental movement.
   - Create and edit Q&A pairs for tasks: `Visual Search`, `Counting`, `Attribute Recognition`, `Spatial Relation`.
   - **Ground-Truth Target Linker**: Interactively click points on the canvas to link them as visual evidence (`target_point_ids`) with animated green pulsating halos.

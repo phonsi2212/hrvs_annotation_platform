@@ -328,6 +328,8 @@ export class BBoxWorkflow {
       });
       if (!res.ok) throw new Error('Failed to create bbox');
       const newBB = await res.json();
+      // The request may finish after the annotator switches to another image.
+      if (this.app.activeImage?.image_id !== imgId) return newBB;
 
       if (newBB.bbox_status && this.app.activeImage) {
         this.app.activeImage.bbox_status = newBB.bbox_status;
@@ -365,6 +367,7 @@ export class BBoxWorkflow {
   }
 
   async updateBBox(bboxId, updates) {
+    const imageId = this.app.activeImage?.image_id;
     if (this.app.bboxLocked) {
       this.lockedToast();
       return;
@@ -377,6 +380,8 @@ export class BBoxWorkflow {
       });
       if (!res.ok) throw new Error('Failed to update bbox');
       const data = await res.json();
+
+      if (this.app.activeImage?.image_id !== imageId) return false;
 
       const bb = this.viewport.bboxes.find(b => b.bbox_id === bboxId);
       if (bb) {
@@ -397,13 +402,16 @@ export class BBoxWorkflow {
       this.viewport.renderMinimapDots();
       this.viewport.requestOverlayRender();
       this.renderBBoxesSummary();
+      return true;
     } catch (err) {
       console.error(err);
       this.app.showToast('Error updating bounding box', 'error');
+      return false;
     }
   }
 
   async deleteBBox(bboxId, pushUndo = true) {
+    const imageId = this.app.activeImage?.image_id;
     if (this.app.bboxLocked) {
       this.lockedToast();
       return;
@@ -416,7 +424,9 @@ export class BBoxWorkflow {
       const res = await fetch(`/api/bboxes/${bboxId}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Delete bbox failed');
 
-      this.viewport.bboxes.splice(idx, 1);
+      if (this.app.activeImage?.image_id !== imageId) return false;
+
+      this.viewport.bboxes = this.viewport.bboxes.filter(bb => bb.bbox_id !== bboxId);
       if (this.viewport.selectedBBoxId === bboxId) {
         this.deselectBBox();
       }
@@ -430,6 +440,7 @@ export class BBoxWorkflow {
         this.redoStack = [];
       }
       this.app.showToast(`Deleted BBox ${bboxId}`, 'info');
+      return true;
     } catch (err) {
       console.error(err);
       this.app.showToast('Error deleting bounding box', 'error');

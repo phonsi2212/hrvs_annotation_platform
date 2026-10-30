@@ -704,6 +704,8 @@ export class App {
   }
 
   switchWorkflow(mode) {
+    if (this.currentWorkflow === 'qa') this.qaWorkflow.cancelBBoxResize();
+    this.viewport.drawingBBox = null;
     this.currentWorkflow = mode;
     this.viewport.workflowMode = mode;
 

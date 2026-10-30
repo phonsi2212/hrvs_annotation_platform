@@ -1087,6 +1087,29 @@ def add_bboxes_batch(image_id: str, bboxes: List[BBoxCreate], conn: sqlite3.Conn
     sync_image_annotation_file(conn, image_id)
     return {"status": "ok", "added_count": len(added), "bbox_ids": added}
 
+def sync_qa_bbox(conn, image_id, bbox_id, bbox=None):
+    """Keep persisted QA geometry and references consistent with box edits."""
+    rows = conn.execute("SELECT * FROM qa_annotations WHERE image_id = ?", (image_id,)).fetchall()
+    for row in rows:
+        target = json.loads(row["target_bbox"] or "null")
+        ids = json.loads(row["target_bbox_ids"] or "[]")
+        refs = json.loads(row["reference_bboxes"] or "[]")
+        target_matches = (target or {}).get("bbox_id") == bbox_id or bbox_id in ids
+        ref_matches = any(ref.get("bbox_id") == bbox_id for ref in refs)
+        if not target_matches and not ref_matches:
+            continue
+        if target_matches:
+            target = bbox
+            ids = [bbox_id] if bbox else []
+        refs = [bbox if ref.get("bbox_id") == bbox_id else ref for ref in refs
+                if ref.get("bbox_id") != bbox_id or bbox]
+        area = (target or {}).get("area_ratio", 0.0)
+        conn.execute("""UPDATE qa_annotations SET target_bbox = ?, target_bbox_ids = ?,
+            reference_bboxes = ?, bbox_area_ratio = ?, bbox_size_warning = ?, updated_at = ?
+            WHERE qa_id = ?""", (json.dumps(target), json.dumps(ids), json.dumps(refs), area,
+                "warning_large_object" if area >= 0.001 else "ok_small_object", utc_now_iso(), row["qa_id"]))
+
+
 @app.patch("/api/bboxes/{bbox_id}")
 def update_bbox(bbox_id: str, payload: BBoxUpdate, conn: sqlite3.Connection = Depends(get_db)):
     cur = conn.cursor()
@@ -1147,6 +1170,11 @@ def update_bbox(bbox_id: str, payload: BBoxUpdate, conn: sqlite3.Connection = De
         params.append(now)
         params.append(bbox_id)
         cur.execute(f"UPDATE bboxes SET {', '.join(updates)} WHERE bbox_id = ?", params)
+        snapshot = dict(cur.execute("SELECT * FROM bboxes WHERE bbox_id = ?", (bbox_id,)).fetchone())
+        snapshot = {key: snapshot[key] for key in (
+            "bbox_id", "category", "x", "y", "width", "height", "x_norm", "y_norm", "width_norm", "height_norm")}
+        snapshot["area_ratio"] = round(float(w_norm) * float(h_norm), 8)
+        sync_qa_bbox(conn, bb["image_id"], bbox_id, snapshot)
         conn.commit()
         sync_image_annotation_file(conn, bb["image_id"])
 
@@ -1181,17 +1209,7 @@ def delete_bbox(bbox_id: str, conn: sqlite3.Connection = Depends(get_db)):
     image_id = bb["image_id"]
     cur.execute("DELETE FROM bboxes WHERE bbox_id = ?", (bbox_id,))
 
-    # Also clean up from QA target_bbox_ids
-    cur.execute("SELECT qa_id, target_bbox_ids FROM qa_annotations WHERE image_id = ?", (image_id,))
-    qas = cur.fetchall()
-    for q in qas:
-        try:
-            ids = json.loads(q["target_bbox_ids"] or "[]")
-            if bbox_id in ids:
-                ids.remove(bbox_id)
-                cur.execute("UPDATE qa_annotations SET target_bbox_ids = ? WHERE qa_id = ?", (json.dumps(ids), q["qa_id"]))
-        except Exception:
-            pass
+    sync_qa_bbox(conn, image_id, bbox_id)
 
     conn.commit()
     sync_image_annotation_file(conn, image_id)

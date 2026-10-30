@@ -346,6 +346,10 @@ export class CanvasViewport {
         } else {
           this.canvas.style.cursor = 'crosshair';
         }
+        if (!this.isSpacePressed && this.workflowMode === 'qa' && this.canEditQABBox?.()) {
+          const handle = this.findBBoxHandleAtScreen(this.mouseX, this.mouseY);
+          if (handle) this.canvas.style.cursor = this._cursorForHandle(handle.handle);
+        }
       }
 
       // Cursor update callback
@@ -397,6 +401,34 @@ export class CanvasViewport {
       }
 
       if (e.button === 0) { // Left click
+        if (this.workflowMode === 'qa' && this.canEditQABBox?.()) {
+          const hit = this.findBBoxHandleAtScreen(this.mouseX, this.mouseY);
+          if (hit) {
+            const pos = this.screenToImage(this.mouseX, this.mouseY);
+            this.draggingBBox = {
+              bbox: hit.bbox, mode: hit.handle,
+              startImgX: pos.xClamped, startImgY: pos.yClamped,
+              origRect: { x: hit.bbox.x, y: hit.bbox.y, width: hit.bbox.width, height: hit.bbox.height }
+            };
+            return;
+          }
+        }
+        // In QA picking, a click selects an existing box; a drag creates one,
+        // including inside existing boxes or over point markers.
+        if (this.workflowMode === 'qa' && this.canDrawQABBox?.() && this.imageLoaded) {
+          const pos = this.screenToImage(this.mouseX, this.mouseY);
+          const style = this.getActiveBBoxDraftStyle?.() || {};
+          this.drawingBBox = {
+            startX: Math.round(pos.xClamped * 10) / 10,
+            startY: Math.round(pos.yClamped * 10) / 10,
+            currX: Math.round(pos.xClamped * 10) / 10,
+            currY: Math.round(pos.yClamped * 10) / 10,
+            startScreenX: this.mouseX, startScreenY: this.mouseY,
+            moved: false, color: style.color, category: style.category
+          };
+          this.requestOverlayRender();
+          return;
+        }
         if (this.workflowMode === 'bbox') {
           // 1. Check resize handles on selected bbox
           if (!this.bboxesLocked && this.selectedBBoxId) {
@@ -472,7 +504,8 @@ export class CanvasViewport {
           return;
         }
 
-        const hitPoint = this.findPointNearScreen(this.mouseX, this.mouseY, this.screenRadius + 4);
+        const hitPoint = (this.workflowMode === 'qa' && (this.isPickingQABBox?.() || this.canEditQABBox?.()))
+          ? null : this.findPointNearScreen(this.mouseX, this.mouseY, this.screenRadius + 4);
         const hitBBoxInQA = (!hitPoint && this.workflowMode === 'qa')
           ? this.findBBoxAtScreen(this.mouseX, this.mouseY, false)
           : null;
@@ -1175,7 +1208,7 @@ export class CanvasViewport {
       }
 
       // Resize handles when selected in BBox mode & unlocked
-      if (isSelected && isBBoxMode && !this.bboxesLocked) {
+      if (isSelected && (isBBoxMode || (isQAMode && this.canEditQABBox?.())) && !this.bboxesLocked) {
         const handles = this._getBBoxHandlesScreen(bb);
         const hs = 7;
         for (const h of handles) {

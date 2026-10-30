@@ -532,6 +532,12 @@
             </div>
 
             <!-- Target BBox (Required) -->
+            <div class="form-group">
+              <label for="qaBBoxCategorySelect" class="form-label" style="font-size:0.72rem;">Category for new BBoxes:</label>
+              <select id="qaBBoxCategorySelect" class="form-control"></select>
+              <button id="qaDeleteBBoxBtn" type="button" class="btn btn-danger" style="margin-top:5px; font-size:0.72rem;">Delete selected BBox</button>
+              <div id="qaBBoxDrawHint" style="margin-top:5px; font-size:0.72rem; color:var(--text-muted);"></div>
+            </div>
             <div class="form-group" style="margin-top: 4px; padding: 7px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.35); border-radius: 6px;">
               <div style="display: flex; align-items: center; justify-content: space-between;">
                 <label class="form-label" style="color: #34d399; font-weight: 700; margin: 0; font-size: 0.74rem;">
@@ -542,7 +548,7 @@
                 </button>
               </div>
               <div id="qaTargetBBoxContainer" style="margin-top: 5px; font-size: 0.74rem;">
-                <span style="color: var(--text-muted); font-style: italic;">No target bbox selected. Click 'Pick Target BBox' then click a box on canvas.</span>
+                <span style="color: var(--text-muted); font-style: italic;">Click 'Pick Target BBox', then click a box or drag to draw a new one.</span>
               </div>
               <!-- Live Area & Warning Container -->
               <div id="qaTargetBBoxAlert" style="margin-top: 5px; display: none;"></div>

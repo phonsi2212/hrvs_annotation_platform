@@ -27,6 +27,7 @@ export class QAWorkflow {
     this.editingQA = null;
     this.pickingMode = null; // 'target' | 'reference' | null
     this.locked = false;
+    this.creatingBBox = false;
 
     this.initElements();
     this.initEvents();
@@ -54,6 +55,10 @@ export class QAWorkflow {
     this.qaTargetBBoxAlert = document.getElementById('qaTargetBBoxAlert');
     this.togglePickRefBBoxesBtn = document.getElementById('togglePickRefBBoxesBtn');
     this.qaRefBBoxesContainer = document.getElementById('qaRefBBoxesContainer');
+    this.qaBBoxCategorySelect = document.getElementById('qaBBoxCategorySelect');
+    this.qaBBoxDrawHint = document.getElementById('qaBBoxDrawHint');
+    this.qaDeleteBBoxBtn = document.getElementById('qaDeleteBBoxBtn');
+    this.qaDeleteBBoxBtn?.addEventListener('click', () => this.deleteSelectedBBox());
 
     // Uniqueness Checkbox
     this.qaUniquenessVerifiedCheck = document.getElementById('qaUniquenessVerifiedCheck');
@@ -76,7 +81,7 @@ export class QAWorkflow {
         this.pickingMode = (this.pickingMode === 'target') ? null : 'target';
         this.updatePickingButtons();
         if (this.pickingMode === 'target') {
-          this.app.showToast('🎯 Click a bounding box on the canvas to set as Target BBox', 'info');
+          this.app.showToast('🎯 Click an existing box or drag to create a new Target BBox. Hold Space to pan.', 'info');
         }
       });
     }
@@ -86,17 +91,68 @@ export class QAWorkflow {
         this.pickingMode = (this.pickingMode === 'reference') ? null : 'reference';
         this.updatePickingButtons();
         if (this.pickingMode === 'reference') {
-          this.app.showToast('📍 Click bounding boxes on canvas to toggle Reference BBoxes (max 2)', 'info');
+          this.app.showToast('📍 Click existing boxes or drag to create Reference BBoxes (max 2). Hold Space to pan.', 'info');
         }
       });
     }
   }
 
   initEvents() {
+    this.viewport.canEditQABBox = () => !!(this.editingQA && !this.locked && !this.app.bboxLocked && !this.creatingBBox);
+    const originalChangeEnd = this.viewport.onBBoxChangeEnd;
+    this.viewport.onBBoxChangeEnd = async (bb, original) => {
+      if (this.app.currentWorkflow !== 'qa') return originalChangeEnd?.(bb, original);
+      if (!this.viewport.canEditQABBox()) {
+        Object.assign(bb, original);
+        this.viewport.requestOverlayRender();
+        return;
+      }
+      this.creatingBBox = true;
+      const imageId = this.app.activeImage?.image_id;
+      try {
+        const saved = await this.app.bboxWorkflow.updateBBox(bb.bbox_id, {
+          x: bb.x, y: bb.y, width: bb.width, height: bb.height
+        });
+        if (!saved) Object.assign(bb, original);
+        if (this.app.activeImage?.image_id === imageId) this.syncBBoxInQA(bb.bbox_id, bb);
+      } finally {
+        this.creatingBBox = false;
+        this.viewport.requestOverlayRender();
+      }
+    };
+    window.addEventListener('keydown', e => {
+      if (e.target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+      if (this.app.currentWorkflow === 'qa' && this.viewport.canEditQABBox() && ['Delete', 'Backspace'].includes(e.key)) {
+        e.preventDefault();
+        this.deleteSelectedBBox();
+      }
+    });
+    this.viewport.isPickingQABBox = () => !!(this.editingQA && this.pickingMode && !this.locked);
+    this.viewport.canDrawQABBox = () => !!(
+      this.editingQA && this.pickingMode && !this.locked &&
+      !this.app.bboxLocked && !this.creatingBBox
+    );
+    const originalDraftStyle = this.viewport.getActiveBBoxDraftStyle;
+    this.viewport.getActiveBBoxDraftStyle = () => {
+      if (this.app.currentWorkflow === 'qa' && this.editingQA) {
+        const category = this.qaBBoxCategorySelect?.value || this.app.bboxWorkflow.activeCategory;
+        const cat = this.app.pointWorkflow.categories.find(c => c.name === category);
+        return { category, color: cat?.color || this.app.bboxWorkflow.activeColor };
+      }
+      return originalDraftStyle?.();
+    };
+    const originalBBoxCreate = this.viewport.onBBoxCreate;
+    this.viewport.onBBoxCreate = (rect) => {
+      if (this.app.currentWorkflow === 'qa') return this.createPickedBBox(rect);
+      return originalBBoxCreate?.(rect);
+    };
+
     // When BBox is clicked in QA mode
     const origBBoxClick = this.viewport.onBBoxClick;
     this.viewport.onBBoxClick = (bb, e) => {
-      if (this.app.currentWorkflow === 'qa' && this.editingQA && bb) {
+      if (this.app.currentWorkflow === 'qa' && this.editingQA && !this.locked && !this.creatingBBox && bb) {
+        this.viewport.selectedBBoxId = bb.bbox_id;
+        this.viewport.requestOverlayRender();
         if (this.pickingMode === 'target') {
           this.setTargetBBox(bb);
           this.pickingMode = null;
@@ -113,6 +169,8 @@ export class QAWorkflow {
   }
 
   resetForImage() {
+    this.cancelBBoxResize();
+    this.viewport.drawingBBox = null;
     this.editingQA = null;
     this.pickingMode = null;
     this.selectedQAId = null;
@@ -132,6 +190,7 @@ export class QAWorkflow {
     this.locked = locked;
     if (this.newQABtn) this.newQABtn.disabled = locked;
     if (locked && this.editingQA) this.cancelQAEditor();
+    this.updatePickingButtons();
     this.renderQAList();
   }
 
@@ -140,10 +199,17 @@ export class QAWorkflow {
   }
 
   updatePickingButtons() {
+    this.viewport.drawingBBox = null;
+    this.viewport.requestOverlayRender();
+    if (this.qaBBoxDrawHint) {
+      this.qaBBoxDrawHint.textContent = this.app.bboxLocked
+        ? 'BBox is locked. Unlock in BBox mode to draw new boxes. Existing boxes can still be picked.'
+        : 'Click to select; drag to create while picking. Drag selected box handles to resize; Delete removes the selected box. Hold Space to pan. Box changes are saved immediately.';
+    }
     if (this.togglePickTargetBBoxBtn) {
       if (this.pickingMode === 'target') {
         this.togglePickTargetBBoxBtn.className = 'btn btn-success active';
-        this.togglePickTargetBBoxBtn.textContent = '🎯 Click Box on Image...';
+        this.togglePickTargetBBoxBtn.textContent = '🎯 Click / Drag Target...';
       } else {
         this.togglePickTargetBBoxBtn.className = 'btn btn-success';
         this.togglePickTargetBBoxBtn.textContent = '🎯 Pick Target BBox';
@@ -154,13 +220,80 @@ export class QAWorkflow {
         this.togglePickRefBBoxesBtn.className = 'btn active';
         this.togglePickRefBBoxesBtn.style.background = '#6366f1';
         this.togglePickRefBBoxesBtn.style.color = '#fff';
-        this.togglePickRefBBoxesBtn.textContent = '📍 Click Ref Box (0-2)...';
+        this.togglePickRefBBoxesBtn.textContent = '📍 Click / Drag Ref (0-2)...';
       } else {
         this.togglePickRefBBoxesBtn.className = 'btn';
         this.togglePickRefBBoxesBtn.style.background = '#4f46e5';
         this.togglePickRefBBoxesBtn.style.color = '#fff';
         this.togglePickRefBBoxesBtn.textContent = '📍 Pick Ref BBoxes';
       }
+    }
+  }
+
+  cancelBBoxResize() {
+    if (this.viewport.draggingBBox) {
+      Object.assign(this.viewport.draggingBBox.bbox, this.viewport.draggingBBox.origRect);
+      this.viewport.draggingBBox = null;
+    }
+  }
+
+  syncBBoxInQA(id, bbox) {
+    const sync = qa => {
+      if (qa.target_bbox?.bbox_id === id || qa.target_bbox_ids?.includes(id)) {
+        qa.target_bbox = bbox ? { ...bbox } : null;
+        qa.target_bbox_ids = bbox ? [id] : [];
+        qa.bbox_area_ratio = bbox ? +(bbox.width / this.viewport.naturalWidth * bbox.height / this.viewport.naturalHeight).toFixed(8) : 0;
+        if (qa.target_bbox) qa.target_bbox.area_ratio = qa.bbox_area_ratio;
+        qa.bbox_size_warning = qa.bbox_area_ratio >= 0.001 ? 'warning_large_object' : 'ok_small_object';
+      }
+      qa.reference_bboxes = (qa.reference_bboxes || []).flatMap(ref => ref.bbox_id !== id ? [ref] : bbox ? [{ ...bbox }] : []);
+    };
+    this.qaList.forEach(sync);
+    if (this.editingQA) {
+      sync(this.editingQA);
+      this.renderTargetBBoxUI();
+      this.renderRefBBoxesUI();
+      this.syncViewportHighlights();
+    }
+    this.renderQAList();
+  }
+
+  async deleteSelectedBBox() {
+    if (!this.viewport.canEditQABBox()) return;
+    const id = this.viewport.selectedBBoxId;
+    if (!id) return;
+    this.creatingBBox = true;
+    try {
+      if (await this.app.bboxWorkflow.deleteBBox(id)) this.syncBBoxInQA(id, null);
+    } finally {
+      this.creatingBBox = false;
+    }
+  }
+
+  async createPickedBBox(rect) {
+    if (!this.viewport.canDrawQABBox()) return;
+    const editor = this.editingQA;
+    const mode = this.pickingMode;
+    if (mode === 'reference' && (editor.reference_bboxes || []).length >= 2) {
+      this.app.showToast('Maximum 2 Reference BBoxes. Remove one before adding another.', 'warning');
+      return;
+    }
+    const style = this.viewport.getActiveBBoxDraftStyle();
+    this.creatingBBox = true;
+    try {
+      const bb = await this.app.bboxWorkflow.createBBox(
+        rect.x, rect.y, rect.width, rect.height, style.category, style.color
+      );
+      if (!bb || this.editingQA !== editor || this.locked) return;
+      if (mode === 'target') {
+        this.setTargetBBox(bb);
+        if (this.pickingMode === mode) this.pickingMode = null;
+      } else {
+        this.toggleRefBBox(bb);
+      }
+      this.updatePickingButtons();
+    } finally {
+      this.creatingBBox = false;
     }
   }
 
@@ -261,7 +394,7 @@ export class QAWorkflow {
     if (!tb || !tb.bbox_id) {
       this.qaTargetBBoxContainer.innerHTML = `
         <span style="color: var(--text-muted); font-size: 0.72rem; font-style: italic;">
-          No target bbox selected. Click <strong>'🎯 Pick Target BBox'</strong> then click a box on the image.
+          No target bbox selected. Click <strong>'🎯 Pick Target BBox'</strong> then click a box or drag to draw a new one.
         </span>
       `;
       if (this.qaTargetBBoxAlert) {
@@ -436,6 +569,18 @@ export class QAWorkflow {
   openQAEditor(title) {
     if (!this.qaEditorCard) return;
     this.qaEditorTitle.textContent = title;
+    if (this.qaBBoxCategorySelect) {
+      const cats = this.app.pointWorkflow.categories;
+      this.qaBBoxCategorySelect.replaceChildren();
+      cats.forEach(cat => {
+        const option = document.createElement('option');
+        option.value = cat.name;
+        option.textContent = cat.name;
+        this.qaBBoxCategorySelect.appendChild(option);
+      });
+      this.qaBBoxCategorySelect.value = this.app.bboxWorkflow.activeCategory;
+      if (!this.qaBBoxCategorySelect.value && cats.length) this.qaBBoxCategorySelect.selectedIndex = 0;
+    }
     if (this.qaImageIdBadge && this.app.activeImage) {
       this.qaImageIdBadge.textContent = `Image: ${this.app.activeImage.image_id}`;
     }
@@ -459,6 +604,9 @@ export class QAWorkflow {
   }
 
   cancelQAEditor() {
+    this.cancelBBoxResize();
+    this.viewport.drawingBBox = null;
+    this.viewport.requestOverlayRender();
     this.editingQA = null;
     this.pickingMode = null;
     if (this.qaEditorCard) this.qaEditorCard.style.display = 'none';
@@ -467,6 +615,10 @@ export class QAWorkflow {
 
   async saveQA() {
     if (!this.app.activeImage || !this.editingQA) return;
+    if (this.creatingBBox || this.viewport.draggingBBox) {
+      this.app.showToast('Please wait for the new bounding box to finish saving.', 'info');
+      return;
+    }
     if (this.locked) {
       this.lockedToast();
       return;
